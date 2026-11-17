@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="407" viewBox="0 0 960 407">
+<style>
+text{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;fill:#d8dee9;animation-duration:12.6s;animation-iteration-count:infinite;animation-fill-mode:both}
+.cmd{fill:#a3be8c}.hl{fill:#ebcb8b;font-weight:bold}.walk{fill:#9aa5b8}.ride{fill:#88c0d0}.dim{fill:#7b8496}
+</style>
+<rect width="100%" height="100%" rx="8" fill="#2e3440"/>
+<circle cx="18" cy="14" r="5" fill="#bf616a"/><circle cx="34" cy="14" r="5" fill="#ebcb8b"/><circle cx="50" cy="14" r="5" fill="#a3be8c"/>
+<text class="dim" x="16" y="40" style="animation-name:l0"># Claude calls the MCP tool:</text><style>@keyframes l0{0%,0.00%{opacity:0}0.01%,100%{opacity:1}}</style>
+<text class="cmd" x="16" y="59" style="animation-name:l1">plan_trip {&quot;city&quot;: &quot;gdansk&quot;, &quot;from&quot;: &quot;Archikatedra Oliwska&quot;, &quot;to&quot;: &quot;Westerplatte&quot;, &quot;depart_at&quot;: &quot;2026-11-16 10:00&quot;}</text><style>@keyframes l1{0%,2.77%{opacity:0}2.78%,100%{opacity:1}}</style>
+<text class="" x="16" y="78" style="animation-name:l2"></text><style>@keyframes l2{0%,5.53%{opacity:0}5.54%,100%{opacity:1}}</style>
+<text class="hl" x="16" y="97" style="animation-name:l3">▸ 11:16 → 12:48   92 min · 1 transfer · 1556 m on foot</text><style>@keyframes l3{0%,8.30%{opacity:0}8.31%,100%{opacity:1}}</style>
+<text class="walk" x="16" y="116" style="animation-name:l4">    walk  9 min  Archikatedra Oliwska → Obrońców Westerplatte</text><style>@keyframes l4{0%,11.07%{opacity:0}11.08%,100%{opacity:1}}</style>
+<text class="ride" x="16" y="135" style="animation-name:l5">    tram 12   11:25 Obrońców Westerplatte → 11:55 Hucisko  (20 stops, scheduled)</text><style>@keyframes l5{0%,13.83%{opacity:0}13.84%,100%{opacity:1}}</style>
+<text class="walk" x="16" y="154" style="animation-name:l6">    walk  3 min  Hucisko → Brama Wyżynna</text><style>@keyframes l6{0%,16.60%{opacity:0}16.61%,100%{opacity:1}}</style>
+<text class="ride" x="16" y="173" style="animation-name:l7">    bus  106  12:00 Brama Wyżynna → 12:41 Muzeum Westerplatte – Terminal Promowy  (26 stops, scheduled)</text><style>@keyframes l7{0%,19.37%{opacity:0}19.38%,100%{opacity:1}}</style>
+<text class="walk" x="16" y="192" style="animation-name:l8">    walk  8 min  Muzeum Westerplatte – Terminal Promowy → Westerplatte</text><style>@keyframes l8{0%,22.13%{opacity:0}22.14%,100%{opacity:1}}</style>
+<text class="" x="16" y="211" style="animation-name:l9"></text><style>@keyframes l9{0%,24.90%{opacity:0}24.91%,100%{opacity:1}}</style>
+<text class="hl" x="16" y="230" style="animation-name:l10">▸ 12:24 → 14:00   96 min · 1 transfer · 1408 m on foot</text><style>@keyframes l10{0%,27.67%{opacity:0}27.68%,100%{opacity:1}}</style>
+<text class="walk" x="16" y="249" style="animation-name:l11">    walk  9 min  Archikatedra Oliwska → Obrońców Westerplatte</text><style>@keyframes l11{0%,30.43%{opacity:0}30.44%,100%{opacity:1}}</style>
+<text class="ride" x="16" y="268" style="animation-name:l12">    tram 6    12:33 Obrońców Westerplatte → 13:06 Śródmieście SKM  (21 stops, scheduled)</text><style>@keyframes l12{0%,33.20%{opacity:0}33.21%,100%{opacity:1}}</style>
+<text class="walk" x="16" y="287" style="animation-name:l13">    walk  1 min  Śródmieście SKM → Śródmieście SKM</text><style>@keyframes l13{0%,35.97%{opacity:0}35.98%,100%{opacity:1}}</style>
+<text class="ride" x="16" y="306" style="animation-name:l14">    bus  138  13:17 Śródmieście SKM → 13:53 Muzeum Westerplatte – Terminal Promowy  (21 stops, scheduled)</text><style>@keyframes l14{0%,38.74%{opacity:0}38.75%,100%{opacity:1}}</style>
+<text class="walk" x="16" y="325" style="animation-name:l15">    walk  8 min  Muzeum Westerplatte – Terminal Promowy → Westerplatte</text><style>@keyframes l15{0%,41.50%{opacity:0}41.51%,100%{opacity:1}}</style>
+<text class="" x="16" y="344" style="animation-name:l16"></text><style>@keyframes l16{0%,44.27%{opacity:0}44.28%,100%{opacity:1}}</style>
+<text class="dim" x="16" y="363" style="animation-name:l17">source: © OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright) · ZTM Gdańsk GTFS — Zarząd T…</text><style>@keyframes l17{0%,47.04%{opacity:0}47.05%,100%{opacity:1}}</style>
+<text class="dim" x="16" y="382" style="animation-name:l18">as_of:  osm: 2026-11-13T01:06:06Z · gtfs_G: published 2026-11-14T01:55:00Z, retrieved 2026-11-14T13:45:26.007Z, valid…</text><style>@keyframes l18{0%,49.80%{opacity:0}49.81%,100%{opacity:1}}</style>
+</svg>

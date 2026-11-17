@@ -1,0 +1,57 @@
+[project]
+name = "poland-transit-mcp"
+version = "0.2.0"
+description = "MCP server for Polish cities: places, walking routes, public transport timetables and trip planning from OpenStreetMap and official GTFS feeds. One SQLite file per city."
+readme = "README.md"
+license = "MIT"
+authors = [{name = "alexratmanpl"}]
+requires-python = ">=3.11"
+keywords = ["mcp", "model-context-protocol", "gtfs", "openstreetmap", "raptor", "public-transport", "poland"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+  "mcp>=2.3,<3",
+  "numpy>=1.26",
+  "opentelemetry-api>=1.30",  # no-op unless the `otel` extra is installed and configured (telemetry.py)
+  "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "opentelemetry-sdk>=1.30"]
+# send traces and metrics to an OpenTelemetry collector (docs/OBSERVABILITY.md)
+otel = ["opentelemetry-sdk>=1.30", "opentelemetry-exporter-otlp-proto-http>=1.30"]
+# the optional Rust search engine (engine/); without it the built-in Python search is used
+fast = ["poland-transit-mcp-engine>=0.2,<0.3"]
+
+[project.urls]
+Homepage = "https://github.com/alexratmanpl/poland-transit-mcp"
+Repository = "https://github.com/alexratmanpl/poland-transit-mcp"
+Issues = "https://github.com/alexratmanpl/poland-transit-mcp/issues"
+
+[project.scripts]
+poland-transit-mcp = "poland_transit_mcp.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/poland_transit_mcp"]
+
+# While poland-transit-mcp-engine is not on PyPI, uv takes it from engine/ (built with the Rust toolchain
+# only when the `fast` extra is requested). PyPI installs ignore this; uv installs from git or a local path
+# build the engine from engine/ (needs Rust).
+[tool.uv.sources]
+poland-transit-mcp-engine = { path = "engine" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

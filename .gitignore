@@ -1,0 +1,27 @@
+# built and downloaded data never goes into git
+data/
+*.sqlite
+*.sqlite-*
+*.sqlite.gz
+*.pbf
+*.zip
+*.geojsonseq
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+.pytest_cache/
+*.log
+.DS_Store
+uv.lock
+.mcp.json
+# local tools and secrets
+.claude/
+.env
+.env.*
+.ruff_cache/
+.idea/
+.vscode/

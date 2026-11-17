@@ -1,0 +1,34 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --extra dev
+      - run: uv run python -c "import poland_transit_mcp.engine as e; assert not e.available(); print(e.NAME)"
+      - run: uv run pytest -q
+  # The same tests with the optional Rust engine built from engine/ (the job above covers the
+  # pure-Python fallback, which is what a plain install uses).
+  test-engine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      # the fast extra builds the engine from engine/ (pyproject.toml: tool.uv.sources)
+      - run: uv sync --extra dev --extra fast
+      - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
+      - run: uv run pytest -q

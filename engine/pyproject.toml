@@ -1,0 +1,19 @@
+[project]
+name = "poland-transit-mcp-engine"
+version = "0.2.0"
+description = "Optional Rust search engine for poland-transit-mcp: same answers as the built-in Python search; search ~20x faster, a whole plan_trip 2.3–3.4x faster"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+classifiers = ["Programming Language :: Rust", "Programming Language :: Python :: Implementation :: CPython"]
+
+[project.urls]
+Repository = "https://github.com/alexratmanpl/poland-transit-mcp"
+
+[build-system]
+requires = ["maturin>=1.16,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "poland_transit_engine"
+features = ["pyo3/extension-module"]

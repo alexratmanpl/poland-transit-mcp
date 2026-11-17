@@ -1,0 +1,21 @@
+[package]
+name = "poland-transit-engine"
+version = "0.2.0"
+edition = "2021"
+description = "RAPTOR trip-planning search for poland-transit-mcp, in Rust"
+license = "MIT"
+repository = "https://github.com/alexratmanpl/poland-transit-mcp"
+publish = false
+
+[lib]
+name = "poland_transit_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+# abi3-py311: one wheel per platform works on every CPython from 3.11 on
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py311"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

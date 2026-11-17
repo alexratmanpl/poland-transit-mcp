@@ -1,0 +1,106 @@
+# Builds the optional Rust engine (engine/) as wheels for Linux, macOS and Windows, and can publish
+# them to PyPI as poland-transit-mcp-engine. Nothing is published unless a maintainer starts this
+# workflow by hand with "publish" ticked. See docs/PUBLISHING.md for the one-time PyPI setup
+# (Trusted Publishing: no tokens or secrets are stored in this repository).
+name: engine-wheels
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload the built wheels to PyPI (poland-transit-mcp-engine)"
+        type: boolean
+        default: false
+  pull_request:
+    paths: ["engine/**", ".github/workflows/engine-wheels.yml"]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: engine
+          target: ${{ matrix.target }}
+          manylinux: "2014"
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: engine/dist
+  macos:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: engine
+          target: ${{ matrix.target }}
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: engine/dist
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: engine
+          target: x64
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x64
+          path: engine/dist
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: engine
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: engine/dist
+  # the Linux wheel, installed next to the server, must give the same answers (tests/test_engine.py)
+  check:
+    needs: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheels-linux-x86_64
+          path: wheels
+      - run: uv sync --extra dev
+      - run: uv pip install wheels/*.whl
+      - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
+      - run: uv run pytest -q
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: [linux, macos, windows, sdist, check]
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
