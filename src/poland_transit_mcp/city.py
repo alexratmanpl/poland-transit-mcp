@@ -52,6 +52,7 @@ class City:
         self._graph: WalkGraph | None = None
         self._tt: Timetable | None = None
         self._stop_nodes: dict[int, list[Stop]] | None = None
+        self.days_kept = 2  # dates each timetable keeps built (CityPool sets it; it holds across unloads)
         # calls arriving together at an unloaded city load each part once, not once per call
         self._graph_lock = threading.Lock()
         self._tt_lock = threading.Lock()
@@ -91,7 +92,7 @@ class City:
             tt = self._tt
             if tt is None:
                 with telemetry.city_load(self.id, "timetable") as s:
-                    tt = self._tt = Timetable(self.db, city_id=self.id)
+                    tt = self._tt = Timetable(self.db, city_id=self.id, days_kept=self.days_kept)
                     s.set_attribute("poland_transit.stops", tt.n_stops)
         return tt
 
@@ -99,6 +100,29 @@ class City:
         """Estimated memory of the parts loaded on demand (walking graph, timetable)."""
         graph, tt = self._graph, self._tt  # read once, as above
         return (graph.nbytes() if graph is not None else 0) + (tt.approx_bytes() if tt is not None else 0)
+
+    def keep_days(self, n: int) -> None:
+        """How many dates the timetable keeps built, now and after every reload."""
+        self.days_kept = n
+        tt = self._tt
+        if tt is not None:
+            tt.days_kept = n
+
+    def cached_days(self) -> list[int]:
+        """The dates the loaded timetable has built, least recently used first (none when it is not loaded)."""
+        tt = self._tt
+        return tt.days_cached() if tt is not None else []
+
+    def last_day_bytes(self) -> int | None:
+        """Estimated size of the most recently used built date, or None."""
+        tt = self._tt
+        return tt.last_day_bytes() if tt is not None else None
+
+    def drop_oldest_day(self) -> int | None:
+        """Drops the least recently used built date while more than one is kept; returns its estimated
+        size, or None when there was none to drop."""
+        tt = self._tt
+        return tt.drop_oldest_day(keep=1) if tt is not None else None
 
     def unload(self) -> None:
         """Drops the walking graph and the timetable; they reload on next use."""

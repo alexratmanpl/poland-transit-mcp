@@ -6,6 +6,7 @@ import math
 import threading
 from array import array
 from collections import OrderedDict
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -109,6 +110,23 @@ class Day:
     by_pattern: dict[int, list[DayTrip]]
     forward: RaptorData | None = None
     backward: RaptorData | None = None
+    nbytes: int = 0  # estimated memory of the trips and of each routing table built (Timetable.approx_bytes)
+    # one lock per direction (forward, backward): calls arriving together build each routing table once
+    build_locks: tuple = field(default_factory=lambda: (threading.Lock(), threading.Lock()), repr=False, compare=False)
+
+
+def trips_bytes(trips: list[DayTrip]) -> int:
+    """Estimated memory of a day's trips: their time arrays plus ~260 B of objects per trip."""
+    return sum(260 + 4 * len(t.dep) * (1 if t.arr is t.dep else 2) for t in trips)
+
+
+def raptor_bytes(rd: RaptorData) -> int:
+    """Estimated memory of one routing direction: two int32 columns per stop position (~90 B of overhead each)."""
+    if rd.engine is not None:  # times live in the engine; Python keeps the pattern objects
+        n = rd.engine.nbytes() + sum(len(rp.stops) * 8 + 200 for rp in rd.patterns)
+    else:
+        n = sum(len(rp.stops) * (2 * 90 + 8 * rp.n_trips) + 200 for rp in rd.patterns)
+    return n + 60 * sum(len(x) for x in rd.stop_routes)
 
 
 @dataclass
@@ -121,13 +139,16 @@ class Timetable:
     stop_by_id: dict[str, Stop] = field(default_factory=dict)
     stop_patterns: dict[int, list[tuple[Pattern, int]]] = field(default_factory=dict)
     transfers: list[list[tuple[int, int]]] = field(default_factory=list)  # stop → [(to stop, walk secs)]
-    _days: OrderedDict = field(default_factory=OrderedDict)
+    days_kept: int = 2  # dates kept in memory, least recently used dropped first (pool.py sets it)
+    _days: OrderedDict = field(default_factory=OrderedDict)  # date → Day, least recently used first
+    _building: dict = field(default_factory=dict)  # date → Future of a Day another thread is building
     _shapes: dict = field(default_factory=dict)
     _headway_col: bool = False
-    _size: int | None = None  # cached approx_bytes(); reset when a day or a RAPTOR table is added or dropped
+    _base_bytes: int = 0  # estimated memory of the structures loaded with the timetable (approx_bytes)
     _engine_transfers: object = None  # foot transfers in the Rust engine, built once per city
     has_trip_details: bool = False  # rail feeds: train names, categories, platforms (trip_info table)
     _days_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    _transfers_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         db = self.db
@@ -156,6 +177,7 @@ class Timetable:
         self.transfers = [[] for _ in range(max_stop + 1)]
         for a, b, w in db.execute("SELECT from_stop, to_stop, walk_s FROM transfers"):
             self.transfers[a].append((b, w))
+        self._base_bytes = 1900 * (len(self.stops) + len(self.patterns))
 
     @property
     def n_stops(self) -> int:
@@ -163,28 +185,30 @@ class Timetable:
 
     def approx_bytes(self) -> int:
         """Estimated memory, counted from what is loaded: ~1.9 KB per stop and per stop pattern for the
-        base structures; per cached day, the trips' time arrays plus ~260 B of objects per trip, and
-        each built RAPTOR direction (two int32 columns per stop position, ~90 B of overhead each)."""
-        if self._size is not None:
-            return self._size
-        n = 1900 * (len(self.stops) + len(self.patterns))
+        base structures, the engine's foot transfers, and each cached date's own size (Day.nbytes: its
+        trips and the routing tables built for it, counted once when each is built)."""
+        transfers = self._engine_transfers
         with self._days_lock:
-            days = list(self._days.values())
-        for day in days:
-            for t in day.trips:
-                n += 260 + 4 * len(t.dep) * (1 if t.arr is t.dep else 2)
-            for rd in (day.forward, day.backward):
-                if rd is None:
-                    continue
-                if rd.engine is not None:  # times live in the engine; Python keeps the pattern objects
-                    n += rd.engine.nbytes() + sum(len(rp.stops) * 8 + 200 for rp in rd.patterns)
-                else:
-                    n += sum(len(rp.stops) * (2 * 90 + 8 * rp.n_trips) + 200 for rp in rd.patterns)
-                n += 60 * sum(len(x) for x in rd.stop_routes)
-        if self._engine_transfers is not None:
-            n += self._engine_transfers.nbytes()
-        self._size = n
-        return n
+            days = sum(day.nbytes for day in self._days.values())
+        return self._base_bytes + days + (transfers.nbytes() if transfers is not None else 0)
+
+    def days_cached(self) -> list[int]:
+        """The cached dates, least recently used first."""
+        with self._days_lock:
+            return list(self._days)
+
+    def last_day_bytes(self) -> int | None:
+        """Estimated size of the most recently used cached date, or None with none cached."""
+        with self._days_lock:
+            return next(reversed(self._days.values())).nbytes if self._days else None
+
+    def drop_oldest_day(self, keep: int = 1) -> int | None:
+        """Drops the least recently used cached date while more than `keep` are cached; returns its
+        estimated size, or None when nothing was dropped. A call still holding that Day finishes on it."""
+        with self._days_lock:
+            if len(self._days) <= keep:
+                return None
+            return self._days.popitem(last=False)[1].nbytes
 
     def services(self, d: int) -> set[int]:
         """Service indexes active on a date (calendar + calendar_dates exceptions)."""
@@ -220,13 +244,37 @@ class Timetable:
 
     def day(self, d: int) -> Day:
         """Trips relevant to date d on its clock: its own service, the previous day's trips running
-        past midnight (GTFS times > 24:00) and the next day's early-morning trips."""
+        past midnight (GTFS times > 24:00) and the next day's early-morning trips.
+
+        Built once: a call asking for a date that another call is building waits for that build (and
+        gets its error, if it fails). The build runs outside the lock, so other dates are not held up."""
         with self._days_lock:
             day = self._days.get(d)
             if day is not None:
                 self._days.move_to_end(d)
                 return day
-        # loaded outside the lock: two threads may both load a new day, and the later one is kept
+            pending = self._building.get(d)
+            building = pending is None
+            if building:
+                pending = self._building[d] = Future()
+        if not building:
+            return pending.result()  # the Day itself: it may already have been dropped from the cache
+        try:
+            day = self._build_day(d)
+        except BaseException as e:
+            with self._days_lock:
+                del self._building[d]
+            pending.set_exception(e)
+            raise
+        with self._days_lock:
+            self._days[d] = day
+            del self._building[d]
+            while len(self._days) > max(self.days_kept, 1):
+                self._days.popitem(last=False)
+        pending.set_result(day)
+        return day
+
+    def _build_day(self, d: int) -> Day:
         with telemetry.city_load(self.city_id, "day") as span:
             trips: list[DayTrip] = []
             self._load_trips(add_days(d, -1), -DAY, lambda first, last: last >= 0, trips)
@@ -237,24 +285,26 @@ class Timetable:
                 by_pattern.setdefault(t.pattern.idx, []).append(t)
             for lst in by_pattern.values():
                 lst.sort(key=lambda t: t.dep[0])
-            day = Day(d, trips, by_pattern)
             span.set_attribute("poland_transit.trips", len(trips))
-        with self._days_lock:
-            self._days[d] = day
-            self._size = None
-            while len(self._days) > 2:
-                self._days.popitem(last=False)
-        return day
+        return Day(d, trips, by_pattern, nbytes=trips_bytes(trips))
 
     def raptor(self, day: Day, backward: bool) -> RaptorData:
+        """The day's routing table in one direction, built once: a call arriving while another builds
+        the same direction waits for it (the other direction has its own lock)."""
         side = "backward" if backward else "forward"
         rd = getattr(day, side)
-        if rd is None:
-            with telemetry.city_load(self.city_id, "routing_tables") as span:
-                rd = self._build_raptor(day, backward)
-                span.set_attributes({"poland_transit.direction": side, "poland_transit.patterns": len(rd.patterns)})
-            setattr(day, side, rd)
-            self._size = None
+        if rd is not None:
+            return rd
+        with day.build_locks[backward]:
+            rd = getattr(day, side)
+            if rd is None:
+                with telemetry.city_load(self.city_id, "routing_tables") as span:
+                    rd = self._build_raptor(day, backward)
+                    span.set_attributes({"poland_transit.direction": side, "poland_transit.patterns": len(rd.patterns)})
+                size = raptor_bytes(rd)
+                with self._days_lock:  # with the size, so approx_bytes never counts one without the other
+                    setattr(day, side, rd)
+                    day.nbytes += size
         return rd
 
     def _build_raptor(self, day: Day, backward: bool) -> RaptorData:
@@ -304,8 +354,9 @@ class Timetable:
                 stop_routes[s].append((i, pos))
         rd = RaptorData(self.n_stops, out, stop_routes, backward=backward)
         if use_engine:
-            if self._engine_transfers is None:
-                self._engine_transfers = engine.transfers(self.transfers, self.n_stops)
+            with self._transfers_lock:  # both directions may be built at once: one copy per city
+                if self._engine_transfers is None:
+                    self._engine_transfers = engine.transfers(self.transfers, self.n_stops)
             rd.engine = engine.tables(self.n_stops, out, stop_routes, flat_arr, flat_dep, time_off)
             rd.engine_transfers = self._engine_transfers
         return rd
