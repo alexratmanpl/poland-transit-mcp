@@ -5,6 +5,7 @@ import threading
 
 import pytest
 
+from poland_transit_mcp import engine
 from poland_transit_mcp.city import City
 from poland_transit_mcp.plan import plan_trip
 from poland_transit_mcp.pool import CityPool
@@ -90,11 +91,13 @@ def test_budget_to_keep_all_cities(two_cities):
 
 def test_budget_to_keep_all_cities_counts_the_dates_kept(two_cities):
     size = two_cities["alpha"].path.stat().st_size
+    first, more = CityPool.size_factors(two_cities["alpha"])
+    assert first == 1.3 and more == (0.4 if engine.available() else 0.5)  # a further date costs more without the engine
     assert CityPool.expected_bytes(two_cities["alpha"]) == int(1.3 * size)  # one date
-    assert CityPool.expected_bytes(two_cities["alpha"], days=3) == int((1.3 + 2 * 0.4) * size)
+    assert CityPool.expected_bytes(two_cities["alpha"], days=3) == int((1.3 + 2 * more) * size)
     two = CityPool(two_cities, budget_mb=480, overhead_mb=230).budget_to_keep_all_mb()
     seven = CityPool(two_cities, budget_mb=480, overhead_mb=230, days_kept=7).budget_to_keep_all_mb()
-    assert seven >= two + int(2 * 5 * 0.4 * size / 1e6) // 50 * 50
+    assert seven >= two + int(2 * 5 * more * size / 1e6) // 50 * 50
 
 
 def build(c: City, *dates: int) -> None:

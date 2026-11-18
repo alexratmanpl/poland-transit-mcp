@@ -160,7 +160,7 @@ claude mcp list                     # expect: poland-transit … ✔ Connected
 - Three big cities: `--cities gdansk,warszawa,katowice --memory-budget 600`.
 - With `poland` for trips between cities: `--cities gdansk,warszawa,katowice,poland --memory-budget 700`
   (`gdansk,katowice,poland` needed 550). The start-up line prints the number your set needs with `--days-kept`
-  dates per city (default 2), so it is above these measured numbers (700 for the three cities, 850 with `poland`),
+  dates per city (default 2), so it is above these measured numbers (700 for the three cities, 850 with `poland`; 750 and 900 with the Python search),
   which come from queries on one date; `--days-kept 1` gives the old figure.
 - **Memory budget:** the default 480 MB cannot keep Gdańsk + Warszawa + Katowice loaded together; the
   server unloads cities and reloads them on demand (1–4 s per switch) and says so at start (*measured*).
