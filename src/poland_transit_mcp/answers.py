@@ -108,6 +108,7 @@ class CityEntry(TypedDict):
     kind: NotRequired[str]
     bbox: NotRequired[list[float]]
     timetable: NotRequired[dict[str, Any]]  # feeds with their credit ids and dates
+    built_at: NotRequired[str]  # when this data file was built, UTC (YYYY-MM-DDTHH:MM:SSZ)
 
 
 class ListCities(Answer):

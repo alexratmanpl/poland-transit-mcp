@@ -620,7 +620,7 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
     def list_cities() -> Annotated[CallToolResult, A.ListCities]:
         """Cities and national layers this server has loaded: the `city` ids all other tools take, each with its
         area (bbox), what it supports (places, walking, timetables, trip planning, maps, live departures) and the
-        dates its timetable covers. Call it first; a date outside `timetable.valid` gives no departures or trips."""
+        dates its timetable covers, and when its data file was built. Call it first; a date outside `timetable.valid` gives no departures or trips."""
         def feed(c: City, f: dict) -> dict:
             """A feed's state and dates; its credit text is in the credits tool, under `credit`."""
             return {"name": f["name"], "status": f["status"], "credit": f'{c.id}/{f["key"]}' if f["status"] == "ok" else None,
@@ -633,6 +633,7 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
             if c.national:
                 out.append({
                     "city": c.id, "name": c.name, "kind": "national layer: trains and coaches between cities",
+                    **({"built_at": c.built_at} if c.built_at else {}),
                     "timetable": {"feeds": [feed(c, f) for f in c.feeds]},
                     "timezone": c.timezone,
                     "features": {"departures": True, "line_info": "lines, or a train by number or name",
@@ -644,6 +645,7 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
                 continue
             out.append({
                 "city": c.id, "name": c.name, "bbox": c.bbox, "osm_date": c.osm["timestamp"],
+                **({"built_at": c.built_at} if c.built_at else {}),
                 "timetable": {"feeds": [feed(c, f) for f in c.feeds],
                               "valid": f"{fmt_date(v[0])}..{fmt_date(v[1])}" if v else None} if c.has_transit else None,
                 "features": {"places": True, "walking": True, "timetables": c.has_transit, "trip_planning": c.has_transit,

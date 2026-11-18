@@ -454,7 +454,7 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "Cities and national layers this server has loaded: the `city` ids all other tools take, each with its\narea (bbox), what it supports (places, walking, timetables, trip planning, maps, live departures) and the\ndates its timetable covers. Call it first; a date outside `timetable.valid` gives no departures or trips.",
+  "description": "Cities and national layers this server has loaded: the `city` ids all other tools take, each with its\narea (bbox), what it supports (places, walking, timetables, trip planning, maps, live departures) and the\ndates its timetable covers, and when its data file was built. Call it first; a date outside `timetable.valid` gives no departures or trips.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {},
@@ -470,6 +470,9 @@
         "type": "number"
        },
        "type": "array"
+      },
+      "built_at": {
+       "type": "string"
       },
       "city": {
        "type": "string"

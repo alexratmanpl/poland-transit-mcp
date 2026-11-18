@@ -152,3 +152,9 @@ def test_a_stop_found_by_the_start_of_its_name_is_named(server):
     assert body["note"].startswith('"Aleja" matched the stop "Aleja Łąkowa"') and body["at"] == "2026-11-10 08:00"
     exact, _ = call(server, "departures", {"city": "testowo", "stop_id": "Aleja Łąkowa", "at": "2026-11-10 08:00"})
     assert "matched the stop" not in (exact.get("note") or "")
+
+
+def test_list_cities_names_when_each_data_file_was_built(server):
+    cities, err = call(server, "list_cities", {})
+    assert not err
+    assert [c["built_at"] for c in cities["cities"]] == ["2026-11-01T00:00:00Z"]
