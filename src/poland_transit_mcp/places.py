@@ -84,6 +84,18 @@ def find_places(city: City, query: str | None = None, near: list[float] | None =
     return out
 
 
+def closest_names(city: City, query: str, limit: int = 4) -> list[str]:
+    """Places that match one word of a name that matched nothing as a whole (an English or declined name:
+    "Kosciuszko Mound" finds "Kopiec Kościuszki"), as `name (kind)`: an error that names them saves the caller a
+    search. The three longest words, longest first (a name of 200 characters must not become dozens of searches); a
+    long word is matched without its last letter, because Polish names decline (Kościuszko, Kościuszki)."""
+    found: dict[str, None] = {}
+    for word in sorted({t for t in tokens(query) if len(t) >= 4}, key=lambda t: (-len(t), t))[:3]:
+        for h in find_places(city, query=word[:-1] if len(word) >= 7 else word, limit=limit):
+            found.setdefault(f'{h["name"]} ({h["kind"]})')
+    return list(found)[:limit]
+
+
 def resolve_point(city: City, p) -> tuple[tuple[float, float], str, dict | None]:
     """[lat, lon] or a place name → (point, label, resolved place). Raises ValueError with a readable message."""
     if isinstance(p, (list, tuple)):
@@ -96,7 +108,11 @@ def resolve_point(city: City, p) -> tuple[tuple[float, float], str, dict | None]
         return (lat, lon), f"[{round(lat, 5)}, {round(lon, 5)}]", None
     hits = find_places(city, query=str(p), limit=1)
     if not hits:
-        raise Refused(f'no place named {quoted(p)} found in {city.id}; try find_places or pass [lat, lon]. A place in '
-                         'another city: plan_trip with to_city; a station elsewhere: plan_stations')
+        close = closest_names(city, str(p))
+        if close:
+            raise Refused(f'no place named {quoted(p)} found in {city.id}; closest: {", ".join(close)}. Pass one of '
+                          "these names, or [lat, lon]")
+        raise Refused(f'no place named {quoted(p)} found in {city.id}; try its Polish name, find_places, or [lat, lon]. '
+                      'A place in another city: plan_trip with to_city; a station elsewhere: plan_stations')
     h = hits[0]
     return (h["at"][0], h["at"][1]), h["name"], h

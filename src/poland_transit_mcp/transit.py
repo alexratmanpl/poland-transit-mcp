@@ -10,7 +10,7 @@ from .city import City
 from .geo import LatLon, haversine, pt, simplify
 from .places import resolve_point
 from .text import fold, quoted
-from .timetable import NO_PICKUP, Stop, headway_fields, route_color
+from .timetable import NO_DROPOFF, NO_PICKUP, Stop, headway_fields, route_color
 from .timeutil import LocalTime, fmt_date, fmt_wall, now_local
 from .walk import FLAG_BRIDGE, FLAG_STEPS, WALK_SPEED_MPS
 
@@ -124,10 +124,18 @@ def resolve_stops(city: City, ref: str) -> list[Stop]:
     names = sorted({s.name for s in found})
     if len(names) > 1:
         raise Refused(f'{quoted(ref)} matches several stops: {", ".join(names[:8])}; pass one of these names')
+    if not found and len(n) >= 4:  # "Bagatela" is the stop "Teatr Bagatela": name it, so the next call is the right one
+        within = sorted({s.name for s in tt.stops if s and n in fold(s.name)})
+        if within:
+            raise Refused(f'no stop named {quoted(ref)} in {city.id}; stops with that in their name: '
+                          f'{", ".join(within[:8])}; pass one of these names')
     return found
 
 
-def scheduled_departures(city: City, stops: list[Stop], when: LocalTime, line: str | None = None, limit: int = 10) -> list[dict]:
+def scheduled_departures(city: City, stops: list[Stop], when: LocalTime, line: str | None = None, limit: int = 10,
+                         to: set[int] | None = None) -> list[dict]:
+    """The next departures from `stops`. With `to` (stop indexes), only the runs that call there later, each with
+    its arrival time there (`arrive`)."""
     tt = city.tt
     day = tt.day(when.date)
     want = fold(line) if line else None
@@ -140,12 +148,18 @@ def scheduled_departures(city: City, stops: list[Stop], when: LocalTime, line: s
             if want and fold(p.route.short) != want:
                 continue
             direction = p.headsign or tt.stops[p.stops[-1]].name
+            end = next((j for j in range(pos + 1, len(p.stops))
+                        if p.stops[j] in to and not p.flags[j] & NO_DROPOFF), None) if to else None
+            if to and end is None:
+                continue
             for t in day.by_pattern.get(p.idx, []):
                 dep = t.dep[pos]
                 if dep < when.secs:
                     continue
                 wdate, wtime = fmt_wall(when.date, dep)
+                adate, atime = fmt_wall(when.date, t.arr[end]) if end is not None else (wdate, None)
                 out.append({"line": p.route.short, "mode": p.route.mode, "operator": p.route.agency, "direction": direction, "time": wtime,
+                            "arrive": atime if adate == wdate or atime is None else f"{adate} {atime}",
                             "date": wdate if wdate != today else None, "stop_id": s.id, "platform": s.platform,
                             "status": "scheduled", "trip_id": t.trip_id, "color": route_color(p.route), "_secs": dep,
                             "_trip": t.trip_idx, "_pos": pos, **headway_fields(t.headway, "status")})
@@ -200,13 +214,26 @@ def train_info(city: City, train: str, date: int) -> dict | None:
 BANDS = ((4, 7), (7, 9), (9, 14), (14, 18), (18, 22), (22, 28))
 
 
+def _lines_by_mode(tt, most: int = 30) -> str:
+    """The timetable's lines, by mode, so a caller who asked for a line that is not there sees at once which are
+    (at most `most` names per mode, shortest names first: a city's trams before its three-digit buses)."""
+    by_mode: dict[str, set[str]] = {}
+    for r in tt.routes.values():
+        by_mode.setdefault(r.mode, set()).add(r.short)
+    parts = []
+    for mode, names in sorted(by_mode.items(), key=lambda kv: len(kv[1])):
+        ordered = sorted(names, key=lambda n: (len(n), n))
+        more = f" and {len(ordered) - most} more" if len(ordered) > most else ""
+        parts.append(f"{mode}: {', '.join(ordered[:most])}{more}")
+    return "; ".join(parts)
+
+
 def line_info(city: City, line: str, date: int) -> dict:
     tt = city.tt
     want = fold(line)
     routes = [r for r in tt.routes.values() if fold(r.short) == want]
     if not routes:
-        similar = [r.short for r in tt.routes.values() if fold(r.short).startswith(want[:1])][:15]
-        raise Refused(f'no line {quoted(line)} in {city.id} timetable' + (f"; similar: {', '.join(similar)}" if similar else ""))
+        raise Refused(f'no line {quoted(line)} in the {city.id} timetable, on any date; it has ' + _lines_by_mode(tt))
     ids = {r.idx for r in routes}
     day = tt.day(date)
     groups: dict = {}

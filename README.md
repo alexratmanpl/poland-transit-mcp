@@ -149,10 +149,10 @@ full data dates) comes with `detail: "full"` on `departures`, `line_info`, `walk
 
 | Tool | Answers |
 |---|---|
-| `list_cities` | cities, data dates, features, search engine |
+| `list_cities` | cities, data dates, features (the server's instructions already name the city ids) |
 | `find_places` | attractions, museums, parks, stations, stops, hotels and streets, by name or proximity |
 | `stops_near` | stops by **walking time**, with the lines serving each |
-| `departures` | scheduled (and opt-in live) departures, with the `operator`; on `poland`, trains with platform and track |
+| `departures` | scheduled (and opt-in live) departures, with the `operator`; on `poland`, trains with platform and track; with `to`, only the runs that go on to another stop, with their arrival there |
 | `line_info` | a line's stops, first/last run and frequency (geometry with `detail`); on `poland`, a train by number or name |
 | `walk_route` | a walking path that never crosses water except on a bridge |
 | `plan_trip` | up to 3 door-to-door itineraries, `depart_at` or `arrive_by`; with `to_city`, between cities by train or FlixBus |

@@ -158,3 +158,84 @@ def test_list_cities_names_when_each_data_file_was_built(server):
     cities, err = call(server, "list_cities", {})
     assert not err
     assert [c["built_at"] for c in cities["cities"]] == ["2026-11-01T00:00:00Z"]
+
+
+def test_departures_to_another_stop_are_the_runs_that_go_there_with_their_arrival(server):
+    """Line 1 runs Aleja Łąkowa -> Brzozowa -> Centrum: asked with `to`, each row has the arrival there, so "the
+    trams from here to there" is one call."""
+    body, err = call(server, "departures", {"city": "testowo", "stop_id": "T:A", "at": "2026-11-10 08:00",
+                                            "to": "Centrum", "limit": 2})
+    assert not err, body
+    assert body["to"] == "Centrum"
+    assert [(d["line"], d["time"], d["arrive"]) for d in body["departures"]] == [("1", "08:00", "08:10"), ("1", "08:03", "08:11")]
+    plain, _ = call(server, "departures", {"city": "testowo", "stop_id": "T:A", "at": "2026-11-10 08:00", "limit": 2})
+    assert "to" not in plain and all("arrive" not in d for d in plain["departures"])
+
+
+def test_departures_to_a_stop_no_run_reaches_says_so(server):
+    body, err = call(server, "departures", {"city": "testowo", "stop_id": "T:A", "at": "2026-11-10 08:00", "to": "Dworcowa"})
+    assert not err and body["departures"] == [] and 'go on to "Dworcowa"' in body["note"] and "plan_trip" in body["note"]
+    text, err = call(server, "departures", {"city": "testowo", "stop_id": "T:A", "to": "Nigdzie"})
+    assert err and 'no stop "Nigdzie"' in text
+
+
+def test_an_unknown_line_names_the_lines_there_are(server):
+    """One step to recover: the caller sees the line is in no timetable date, and which lines exist."""
+    text, err = call(server, "line_info", {"city": "testowo", "line": "99", "date": "2026-11-10"})
+    assert err and 'no line "99" in the testowo timetable, on any date' in text
+    assert text.endswith("it has tram: 1; metro: M; bus: 2, L3, N1")
+
+
+def test_the_instructions_name_the_loaded_cities(server):
+    """A session needs no list_cities call to learn the city ids."""
+    assert "(the `city` ids): testowo." in server.instructions
+    assert "to_city" not in server.instructions  # no national layer loaded: nothing said about trips between cities
+
+
+def test_a_place_name_that_matches_nothing_names_the_closest_ones(server):
+    """An English or declined name fails as a whole; the error names the places that match one of its words, so the
+    next call is the right one and needs no search."""
+    text, err = call(server, "walk_route", {"city": "testowo", "from": at(2, 6), "to": "Turtle Muzeum"})
+    assert err and 'no place named "Turtle Muzeum" found in testowo; closest: ' in text and "(museum)" in text
+    text, err = call(server, "walk_route", {"city": "testowo", "from": at(2, 6), "to": "Qqqq Wwww"})
+    assert err and "closest" not in text and "find_places" in text
+
+
+def test_a_stop_name_inside_a_longer_one_is_named(server):
+    text, err = call(server, "departures", {"city": "testowo", "stop_id": "Łąkowa", "at": "2026-11-10 08:00"})
+    assert err and 'stops with that in their name: Aleja Łąkowa' in text
+
+
+def test_credits_take_a_city_id_for_all_its_sources(server):
+    """So a caller can ask for the credits alongside its first data call, before it has an answer's ids."""
+    by_city, _ = call(server, "credits", {"ids": ["testowo"]})
+    ids = [e["id"] for e in by_city["credits"]]
+    assert ids[0] == "osm" and "testowo/T" in ids and "note" not in by_city
+    assert all(set(e) == {"id", "text"} for e in by_city["credits"]) and "about" not in by_city
+
+
+def test_departures_to_a_stop_skip_runs_that_let_nobody_off_there(server, city, monkeypatch):
+    """A run that calls at the stop but allows no alighting there does not go "to" it."""
+    from poland_transit_mcp.timetable import NO_DROPOFF
+    args = {"city": "testowo", "stop_id": "T:A", "at": "2026-11-10 08:00", "to": "Centrum", "limit": 3}
+    before, _ = call(server, "departures", args)
+    assert {d["line"] for d in before["departures"]} == {"1"}
+    for p in city.tt.patterns.values():
+        if p.route.short == "1":  # line 1 ends at Centrum: mark its last stop "no drop-off"
+            monkeypatch.setattr(p, "flags", p.flags[:-1] + bytes([p.flags[-1] | NO_DROPOFF]))
+    after, err = call(server, "departures", args)
+    assert not err and [d["line"] for d in after["departures"]] == ["N1"]  # the night line still lets people off
+
+
+def test_unknown_credit_ids_are_named_briefly(server):
+    """The note quotes the caller's text: a few ids, each cut, never the whole list back."""
+    body, err = call(server, "credits", {"ids": ["x" * 80] * 50})
+    assert not err and body["credits"] == []
+    assert "and 45 more" in body["note"] and len(body["note"]) < 700
+
+
+def test_the_instructions_say_which_tool_answers_which_question(server):
+    """A client that loads tool definitions on demand chooses tools from their names and this text alone."""
+    text = server.instructions
+    assert "from one stop to another, and a stop's next departures: departures (with `to`)" in text
+    assert "leg-end points" in text and len(text) < 2000
