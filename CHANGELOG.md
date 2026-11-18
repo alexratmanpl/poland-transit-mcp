@@ -2,6 +2,11 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- Several calls at the same time (over `--http`) no longer fail with "could not answer this request". Each city file had one SQLite connection that every worker thread used at once; their statements interleaved and raised `InterfaceError` (32 of 60 `departures` calls, fired 20 at a time on a national rail layer). Each statement now runs to its last row under the connection's lock. Calls that arrive together at an unloaded city load it once instead of once each. Caches of loaded days and shapes, and a city's timetable while the memory budget unloads it, are read safely from several threads too.
+
 ## 0.3.0 - 2026-11-18
 
 ### Changed

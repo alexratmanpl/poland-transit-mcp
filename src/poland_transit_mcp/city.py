@@ -1,9 +1,10 @@
-"""One loaded city: read-only SQLite handle, metadata, lazily-built walking graph and timetable."""
+"""One loaded city: read-only SQLite handle (shared by threads, shared_db.py), metadata, lazily-built walking graph
+and timetable."""
 from __future__ import annotations
 
 import json
+import threading
 from datetime import date, timedelta
-import sqlite3
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import numpy as np
 from .errors import Refused
 from . import telemetry
 from .config import CITIES, CityConfig
+from .shared_db import SharedConnection
 from .timetable import Stop, Timetable
 from .timeutil import fmt_date, same_clock
 from .walk import GraphArrays, WalkGraph
@@ -20,7 +22,7 @@ from .walk import GraphArrays, WalkGraph
 class City:
     def __init__(self, path: Path):
         self.path = path
-        self.db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
+        self.db = SharedConnection.read_only(path)
         meta = dict(self.db.execute("SELECT key, value FROM meta"))
         self.id: str = meta["city"]
         self.cfg: CityConfig | None = CITIES.get(self.id)
@@ -50,6 +52,9 @@ class City:
         self._graph: WalkGraph | None = None
         self._tt: Timetable | None = None
         self._stop_nodes: dict[int, list[Stop]] | None = None
+        # calls arriving together at an unloaded city load each part once, not once per call
+        self._graph_lock = threading.Lock()
+        self._tt_lock = threading.Lock()
 
     @staticmethod
     def open(data_dir: Path, city_id: str) -> "City":
@@ -61,28 +66,39 @@ class City:
 
     @property
     def graph(self) -> WalkGraph:
-        if self._graph is None:
-            if self.national:
-                raise Refused(f'"{self.id}" is the national layer of trains and coaches: it has stations and '
-                                 "timetables but no map. Use departures or line_info on it, or plan_trip with "
-                                 "city and to_city for a trip between cities")
-            with telemetry.city_load(self.id, "graph") as s:
-                rows = dict(self.db.execute("SELECT name, data FROM blobs WHERE name LIKE 'walk_%'"))
-                self._graph = WalkGraph(GraphArrays.from_blobs(rows))
-                s.set_attribute("poland_transit.bytes", self._graph.nbytes())
-        return self._graph
+        graph = self._graph  # read once: another thread may unload the city meanwhile
+        if graph is not None:
+            return graph
+        if self.national:
+            raise Refused(f'"{self.id}" is the national layer of trains and coaches: it has stations and '
+                             "timetables but no map. Use departures or line_info on it, or plan_trip with "
+                             "city and to_city for a trip between cities")
+        with self._graph_lock:
+            graph = self._graph
+            if graph is None:
+                with telemetry.city_load(self.id, "graph") as s:
+                    rows = dict(self.db.execute("SELECT name, data FROM blobs WHERE name LIKE 'walk_%'"))
+                    graph = self._graph = WalkGraph(GraphArrays.from_blobs(rows))
+                    s.set_attribute("poland_transit.bytes", graph.nbytes())
+        return graph
 
     @property
     def tt(self) -> Timetable:
-        if self._tt is None:
-            with telemetry.city_load(self.id, "timetable") as s:
-                self._tt = Timetable(self.db, city_id=self.id)
-                s.set_attribute("poland_transit.stops", self._tt.n_stops)
-        return self._tt
+        tt = self._tt  # read once: another thread may unload the city meanwhile
+        if tt is not None:
+            return tt
+        with self._tt_lock:
+            tt = self._tt
+            if tt is None:
+                with telemetry.city_load(self.id, "timetable") as s:
+                    tt = self._tt = Timetable(self.db, city_id=self.id)
+                    s.set_attribute("poland_transit.stops", tt.n_stops)
+        return tt
 
     def heavy_bytes(self) -> int:
         """Estimated memory of the parts loaded on demand (walking graph, timetable)."""
-        return (self._graph.nbytes() if self._graph is not None else 0) + (self._tt.approx_bytes() if self._tt is not None else 0)
+        graph, tt = self._graph, self._tt  # read once, as above
+        return (graph.nbytes() if graph is not None else 0) + (tt.approx_bytes() if tt is not None else 0)
 
     def unload(self) -> None:
         """Drops the walking graph and the timetable; they reload on next use."""
