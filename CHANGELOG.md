@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.4.0 - 2026-11-18
 
 ### Changed
 - **One answer rule on every tool**, stated in the server's instructions and in [AGENTS.md](AGENTS.md#lean-by-default-more-on-demand): the default answer holds what a person asking needs and every id another tool takes; `detail: "full"` adds every field code needs, `limit` more rows, filters narrow the question; an answer that was cut says so in `note`, with how to get the rest.
