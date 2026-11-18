@@ -143,16 +143,19 @@ a few days apart. With three large cities plus `poland`, give it `--memory-budge
 
 ## Tools
 
-Answers are lean by default: what only code needs (line geometry, trip ids, colours, the points of a leg's ends, the
-full data dates) comes with `detail: "full"` on `departures`, `line_info`, `walk_route`, `plan_trip` and
-`plan_stations`. Each tool's `outputSchema` marks those fields "only with detail=\"full\"".
+Answers are lean by default and the same rule holds on every tool: the default answer holds what a person asking
+needs and every id the next call takes; `detail: "full"` adds what only code needs (line geometry, trip ids, colours,
+the points of a leg's ends, the full data dates) on `departures`, `line_info`, `walk_route`, `plan_trip` and
+`plan_stations`; `limit` gives more rows and filters narrow the question; an answer that was cut says so in `note`.
+Each tool's `outputSchema` marks the fields "only with detail=\"full\"", and each `detail` says how much larger the
+answer gets. Sizes per tool: [AGENTS.md](AGENTS.md#lean-by-default-more-on-demand).
 
 | Tool | Answers |
 |---|---|
 | `list_cities` | cities, data dates, features (the server's instructions already name the city ids) |
 | `find_places` | attractions, museums, parks, stations, stops, hotels and streets, by name or proximity |
 | `stops_near` | stops by **walking time**, with the lines serving each |
-| `departures` | scheduled (and opt-in live) departures, with the `operator`; on `poland`, trains with platform and track; with `to`, only the runs that go on to another stop, with their arrival there |
+| `departures` | scheduled (and opt-in live) departures, with the `operator`; on `poland`, trains with platform and track; with `to`, only the runs that go on to another stop, with their arrival there; `mode` for one kind of vehicle |
 | `line_info` | a line's stops, first/last run and frequency (geometry with `detail`); on `poland`, a train by number or name |
 | `walk_route` | a walking path that never crosses water except on a bridge |
 | `plan_trip` | up to 3 door-to-door itineraries, `depart_at` or `arrive_by`; with `to_city`, between cities by train or FlixBus |

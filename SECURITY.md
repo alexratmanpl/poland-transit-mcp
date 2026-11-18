@@ -41,7 +41,7 @@ add:
 - **a rate limit** per caller;
 - **a time limit per call** (the slowest real calls measured, a long trip between cities or a large PNG, took under
   0.6 s on a laptop);
-- **a body limit near 64 kB** (a normal call is under 2 kB, a whole itinerary for `render_map` about 25 kB; the
+- **a body limit near 64 kB** (a normal call is under 2 kB, the largest, `plan_stations` with 40 stations at their longest, about 10 kB; the
   server itself accepts up to 4 MB).
 
 The server takes at most about 40 calls at once (the SDK's thread pool); a PNG holds Python's lock while it is

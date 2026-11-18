@@ -1,5 +1,5 @@
-"""The budget: the largest drawing the published schema allows (30 legs of 5,000 points, every label at its longest,
-the largest size, as PNG) stays under fixed ceilings of time and memory. Run in its own process, so the memory
+"""The budget: the largest drawing the published schema allows (the whole test city, a trip across it, the largest
+size, as PNG) stays under fixed ceilings of time and memory. Run in its own process, so the memory
 high-water mark is this call's alone."""
 import json
 import os
@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-SECONDS = 6.0  # measured 2026-11-18 on an Apple Silicon Mac: 1.3 s (a 1,519 x 2,000 PNG)
-PEAK_MB = 300  # growth of the process's memory high-water mark during the call; measured 90-92 MB
+SECONDS = 6.0  # a caller's own itinerary (30 legs of 5,000 points) took 1.3 s before render_map took only `trip`
+PEAK_MB = 300  # growth of the process's memory high-water mark during the call; measured 90-92 MB then
 
 SCRIPT = r"""
 import json, math, resource, sys, time
@@ -22,13 +22,7 @@ from poland_transit_mcp.server import create_server
 city_dir = sys.argv[1]
 server = create_server({"testowo": City.open(city_dir, "testowo")})
 
-def leg(i):
-    # a path that stays inside the test city's frame: a spiral of 5,000 points
-    path = [[50.0 + 0.009 * (1 + math.sin(i + k / 37)) , 19.0 + 0.01 * (1 + math.cos(i + k / 41))] for k in range(5000)]
-    return {"mode": "bus" + "x" * 17, "line": "L" * 60, "color": "#" + "a" * 19,
-            "from": {"name": "N" * 200, "at": path[0]}, "to": {"name": "M" * 200, "at": path[-1]}, "path": path}
-
-args = {"city": "testowo", "itinerary": {"legs": [leg(i) for i in range(30)]}, "size": 2000, "output": "png"}
+box = list(City.open(city_dir, "testowo").bbox)  # the whole test city
 
 def rss_mb():
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -37,6 +31,10 @@ def rss_mb():
 async def go():
     async with Client(server) as c:
         await c.call_tool("list_cities", {})
+        plan = await c.call_tool("plan_trip", {"city": "testowo", "from": [50.0018, 19.0014], "to": [50.0162, 19.0168],
+                                               "depart_at": "2026-11-10 07:58"})
+        trip = plan.structured_content["itineraries"][0]["trip"]
+        args = {"city": "testowo", "bbox": box, "trip": trip, "size": 2000, "output": "png"}
         before = rss_mb()
         t = time.perf_counter()
         r = await c.call_tool("render_map", args)

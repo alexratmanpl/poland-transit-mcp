@@ -16,6 +16,12 @@ _BOOST = {"station": 8, "attraction": 6, "museum": 6, "landmark": 5, "park": 4, 
 
 def find_places(city: City, query: str | None = None, near: list[float] | None = None, radius_m: float | None = None,
                 kinds: list[str] | None = None, limit: int = 10) -> list[dict]:
+    return search_places(city, query, near, radius_m, kinds, limit)[0]
+
+
+def search_places(city: City, query: str | None = None, near: list[float] | None = None, radius_m: float | None = None,
+                  kinds: list[str] | None = None, limit: int = 10) -> tuple[list[dict], bool]:
+    """The best `limit` places, and whether more matched than were returned (the answer was cut)."""
     limit = max(1, min(limit or 10, 50))
     toks = tokens(query) if query else []
     where, params = [], []
@@ -33,7 +39,7 @@ def find_places(city: City, query: str | None = None, near: list[float] | None =
         where.append("id IN (SELECT id FROM places_rtree WHERE min_lat >= ? AND max_lat <= ? AND min_lon >= ? AND max_lon <= ?)")
         params += [near[0] - d_lat, near[0] + d_lat, near[1] - d_lon, near[1] + d_lon]
     if not where:
-        return []
+        return [], False
     rows = city.db.execute(f"SELECT kind, name, name_norm, lat, lon, ref, extra FROM places WHERE {' AND '.join(where)} LIMIT 5000",
                            params).fetchall()
     q = " ".join(toks)
@@ -58,6 +64,7 @@ def find_places(city: City, query: str | None = None, near: list[float] | None =
         scored.append((score, kind, name, lat, lon, ref, extra, d))
     scored.sort(key=lambda x: -x[0])
     out: list[dict] = []
+    cut = len(rows) >= 5000  # the query's own cap
     groups: dict[str, dict] = {}
     for _, kind, name, lat, lon, ref, extra, d in scored:
         ex = json.loads(extra) if extra else {}
@@ -67,11 +74,13 @@ def find_places(city: City, query: str | None = None, near: list[float] | None =
                 g["stop_ids"].append(ex.get("stop_id"))
                 continue
             if len(out) >= limit:
+                cut = True
                 continue
             hit = {"name": name, "kind": "stop", "at": pt(lat, lon), "stop_ids": [ex.get("stop_id")]}
             groups[name] = hit
         else:
             if len(out) >= limit:
+                cut = True
                 continue
             hit = {"name": name, "kind": kind, "at": pt(lat, lon)}
             if ref and re.fullmatch(r"[nwr]\d+", ref):
@@ -81,7 +90,7 @@ def find_places(city: City, query: str | None = None, near: list[float] | None =
         if d is not None:
             hit["dist_m"] = round(d)
         out.append(hit)
-    return out
+    return out, cut
 
 
 def closest_names(city: City, query: str, limit: int = 4) -> list[str]:
