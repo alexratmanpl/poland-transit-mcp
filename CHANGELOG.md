@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.0 - 2026-11-18
 
 ### Added
 - `--days-kept N` (`POLAND_TRANSIT_DAYS_KEPT`, default 2): how many dates each city keeps built in memory. A client planning many trips over several dates (a week) no longer has a date built again a few calls later.
