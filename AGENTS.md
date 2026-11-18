@@ -296,7 +296,7 @@ uv run python scripts/measure.py --cities gdansk --trips 50    # Linux only: it 
 - Engine tests skip without the engine; `tests/test_gdansk_data.py` skips without `data/cities/gdansk.sqlite`.
 - **Code map** (`src/poland_transit_mcp/`):
   - entry and tools: `cli.py` entry, data download; `server.py` the eleven tools; `answers.py` their answer shapes; `credits.py` the credits set
-  - data access: `schema.py` the SQLite schema of a city file; `city.py` opens one; `pool.py` memory budget and
+  - data access: `schema.py` the SQLite schema of a city file; `city.py` opens one; `shared_db.py` its connection, shared by threads; `pool.py` memory budget and
     loading; `memory.py` returns freed memory to the OS
   - places and walking: `places.py` `find_places`; `walk.py` walking graph; `geo.py` geometry helpers
   - transit and routing: `transit.py` `stops_near`, `walk_route`, `departures`, `line_info`; `timetable.py`,

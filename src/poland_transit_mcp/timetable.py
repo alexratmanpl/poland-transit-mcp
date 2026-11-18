@@ -3,7 +3,7 @@ RAPTOR-ready arrays built from it."""
 from __future__ import annotations
 
 import math
-import sqlite3
+import threading
 from array import array
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -12,6 +12,7 @@ import numpy as np
 
 from . import engine, telemetry
 from .geo import LatLon, decode_parts
+from .shared_db import SharedConnection
 from .timeutil import add_days, weekday
 
 NO_PICKUP = 1
@@ -112,7 +113,7 @@ class Day:
 
 @dataclass
 class Timetable:
-    db: sqlite3.Connection
+    db: SharedConnection  # shared by the threads answering calls, like everything here
     city_id: str = ""  # for telemetry only
     routes: dict[int, Route] = field(default_factory=dict)
     patterns: dict[int, Pattern] = field(default_factory=dict)
@@ -126,6 +127,7 @@ class Timetable:
     _size: int | None = None  # cached approx_bytes(); reset when a day or a RAPTOR table is added or dropped
     _engine_transfers: object = None  # foot transfers in the Rust engine, built once per city
     has_trip_details: bool = False  # rail feeds: train names, categories, platforms (trip_info table)
+    _days_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         db = self.db
@@ -166,7 +168,9 @@ class Timetable:
         if self._size is not None:
             return self._size
         n = 1900 * (len(self.stops) + len(self.patterns))
-        for day in self._days.values():
+        with self._days_lock:
+            days = list(self._days.values())
+        for day in days:
             for t in day.trips:
                 n += 260 + 4 * len(t.dep) * (1 if t.arr is t.dep else 2)
             for rd in (day.forward, day.backward):
@@ -217,9 +221,12 @@ class Timetable:
     def day(self, d: int) -> Day:
         """Trips relevant to date d on its clock: its own service, the previous day's trips running
         past midnight (GTFS times > 24:00) and the next day's early-morning trips."""
-        if d in self._days:
-            self._days.move_to_end(d)
-            return self._days[d]
+        with self._days_lock:
+            day = self._days.get(d)
+            if day is not None:
+                self._days.move_to_end(d)
+                return day
+        # loaded outside the lock: two threads may both load a new day, and the later one is kept
         with telemetry.city_load(self.city_id, "day") as span:
             trips: list[DayTrip] = []
             self._load_trips(add_days(d, -1), -DAY, lambda first, last: last >= 0, trips)
@@ -232,10 +239,11 @@ class Timetable:
                 lst.sort(key=lambda t: t.dep[0])
             day = Day(d, trips, by_pattern)
             span.set_attribute("poland_transit.trips", len(trips))
-        self._days[d] = day
-        self._size = None
-        while len(self._days) > 2:
-            self._days.popitem(last=False)
+        with self._days_lock:
+            self._days[d] = day
+            self._size = None
+            while len(self._days) > 2:
+                self._days.popitem(last=False)
         return day
 
     def raptor(self, day: Day, backward: bool) -> RaptorData:
@@ -323,12 +331,13 @@ class Timetable:
         return sorted(seen.values(), key=lambda r: (len(r.short), r.short))
 
     def shape(self, idx: int) -> list[LatLon]:
-        if idx not in self._shapes:
+        coords = self._shapes.get(idx)  # a local: another thread may clear the cache meanwhile
+        if coords is None:
             row = self.db.execute("SELECT coords FROM shapes WHERE shape_idx = ?", (idx,)).fetchone()
             if len(self._shapes) > 500:
                 self._shapes.clear()
-            self._shapes[idx] = decode_parts(row[0])[0] if row else []
-        return self._shapes[idx]
+            coords = self._shapes[idx] = decode_parts(row[0])[0] if row else []
+        return coords
 
     def _stop_positions(self, p: Pattern) -> list[tuple[int, float, LatLon]] | None:
         """Places every stop of a pattern on its shape, in order: (segment, fraction, point) per stop.
@@ -338,8 +347,10 @@ class Timetable:
         distance is smallest. Nearest-point matching alone fails where a shape passes a stop twice
         (e.g. a bus leaving a terminus, looping, and coming back past the next platform)."""
         key = ("pos", p.idx)
-        if key in self._shapes:
+        try:
             return self._shapes[key]
+        except KeyError:  # not placed yet, or another thread cleared the cache
+            pass
         shape = self.shape(p.shape) if p.shape else []
         result = None
         if len(shape) >= 2:
