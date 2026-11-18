@@ -49,6 +49,9 @@ def walk_to_stops(city: City, at: LatLon, max_secs: float) -> WalkSearch:
     return WalkSearch(at, snap.node, snap.dist, out, pred, dist)
 
 
+MAX_PLATFORMS = 20  # stops_near: the most platforms one answer lists, nearest first
+
+
 def stops_near(city: City, point, max_walk_min: float = 10, date: int | None = None) -> dict:
     at, label, resolved = resolve_point(city, point)
     if not city.has_transit:
@@ -56,13 +59,16 @@ def stops_near(city: City, point, max_walk_min: float = 10, date: int | None = N
     d = date or now_local().date
     w = walk_to_stops(city, at, min(max_walk_min, 30) * 60)
     out = []
-    for idx, secs in sorted(w.stops.items(), key=lambda x: x[1])[:20]:
+    for idx, secs in sorted(w.stops.items(), key=lambda x: x[1])[:MAX_PLATFORMS]:
         s = city.tt.stops[idx]
         out.append({"stop_id": s.id, "name": s.name, "platform": s.platform, "at": pt(s.lat, s.lon),
                     "walk_min": round(secs / 60, 1), "lines": [r.short for r in city.tt.lines_at(idx, d)]})
     return {"point": pt(*at), "resolved_from": resolved["name"] if resolved else None, "date": fmt_date(d),
             "max_walk_min": max_walk_min, "stops": out,
-            "note": (city.transit_note(d) if out else f"no stops within {max_walk_min} min walk")}
+            "note": "; ".join(filter(None, [
+                f"the nearest {MAX_PLATFORMS} of {len(w.stops)} platforms within {max_walk_min:g} min; for more stops "
+                'use find_places with near and kinds ["stop"]' if len(w.stops) > MAX_PLATFORMS else None,
+                city.transit_note(d) if out else f"no stops within {max_walk_min} min walk"])) or None}
 
 
 @dataclass
@@ -133,9 +139,9 @@ def resolve_stops(city: City, ref: str) -> list[Stop]:
 
 
 def scheduled_departures(city: City, stops: list[Stop], when: LocalTime, line: str | None = None, limit: int = 10,
-                         to: set[int] | None = None) -> list[dict]:
-    """The next departures from `stops`. With `to` (stop indexes), only the runs that call there later, each with
-    its arrival time there (`arrive`)."""
+                         to: set[int] | None = None, mode: str | None = None) -> list[dict]:
+    """The next departures from `stops`, of one `line` and `mode` if given. With `to` (stop indexes), only the runs
+    that call there later, each with its arrival time there (`arrive`)."""
     tt = city.tt
     day = tt.day(when.date)
     want = fold(line) if line else None
@@ -145,7 +151,7 @@ def scheduled_departures(city: City, stops: list[Stop], when: LocalTime, line: s
         for p, pos in tt.stop_patterns.get(s.idx, []):
             if pos == len(p.stops) - 1 or p.flags[pos] & NO_PICKUP:
                 continue
-            if want and fold(p.route.short) != want:
+            if want and fold(p.route.short) != want or mode and p.route.mode != mode:
                 continue
             direction = p.headsign or tt.stops[p.stops[-1]].name
             end = next((j for j in range(pos + 1, len(p.stops))

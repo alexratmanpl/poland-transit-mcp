@@ -14,10 +14,6 @@ GOLDEN = Path(__file__).parent / "golden" / "tools_list.json"
 
 # Nodes that may be open (no `additionalProperties: false`), each with its reason. Paths as `walk` writes them.
 OPEN = {
-    ("render_map", "itinerary"): "a whole plan option is passed as it is: render_map reads a few fields, ignores the rest",
-    ("render_map", "itinerary.legs[]"): "as above: a plan's leg carries more fields than the map needs",
-    ("render_map", "itinerary.legs[].from"): "as above: a leg's end carries stop_id, platform and more",
-    ("render_map", "itinerary.legs[].to"): "as above",
     ("render_map", "style"): "keys are layer names; bounded by maxProperties and propertyNames, values by maxLength",
 }
 

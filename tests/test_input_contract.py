@@ -32,36 +32,13 @@ def refused(server, name, args, *words):
     return text
 
 
-# ---------------------------------------------------------------- render_map's itinerary
+# ---------------------------------------------------------------- render_map takes a trip one way
 
-@pytest.mark.parametrize("itinerary,where", [
-    ({"legs": "x"}, "itinerary.legs"),
-    ({"legs": 5}, "itinerary.legs"),
-    ({"legs": None}, "itinerary.legs"),
-    ({"legs": []}, "itinerary.legs"),
-    ({"legs": [{"path": [[50.0]]}]}, "itinerary.legs.0.path.0"),
-    ({"legs": [{"path": [["a", "b"]]}]}, "itinerary.legs.0.path.0"),
-    ({"legs": [{"path": [None]}]}, "itinerary.legs.0.path.0"),
-    ({"legs": [{"path": "50,19"}]}, "itinerary.legs.0.path"),
-    ({"legs": [{"path": [[50.0, 19.0]], "from": {"name": 5, "at": [50.0, 19.0]}}]}, "itinerary.legs.0.from.name"),
-    ({"legs": [{"path": [[50.0, 19.0]], "from": "Rynek"}]}, "itinerary.legs.0.from"),
-    ({"legs": [{"path": [[91.0, 19.0]]}]}, "latitude"),
-    ({"legs": [{"path": [[50.0, 190.0]]}]}, "itinerary.legs.0.path.0.1"),
-    ({"legs": [{"mode": "bus", "path": [[50.0, 19.0]]}] * 31}, "itinerary.legs"),
-    ({"legs": [{"path": [[50.0, 19.0]] * 5001}]}, "itinerary.legs.0.path"),
-])
-def test_a_malformed_itinerary_is_refused_by_name(server, itinerary, where):
-    refused(server, "render_map", {"city": "testowo", "itinerary": itinerary}, where)
-
-
-def test_a_whole_plan_option_draws_with_its_extra_fields(server):
-    plan, err = call(server, "plan_trip", {**PLAN, "detail": "full"})
-    assert not err
-    import json
-    option = json.loads(plan)["itineraries"][0]
-    assert {"depart", "trip", "transfers"} <= set(option)  # fields render_map does not read
-    text, err = call(server, "render_map", {"city": "testowo", "itinerary": option, "output": "svg"})
-    assert not err, text
+def test_an_itinerary_is_refused_and_the_refusal_names_trip(server):
+    """render_map takes a plan option as its `trip` reference only; the argument it took before is refused with what
+    to pass instead."""
+    refused(server, "render_map", {"city": "testowo", "itinerary": {"legs": [{"path": [[50.0, 19.0]]}]}},
+            'unknown argument "itinerary"', "pass its `trip` value as trip")
 
 
 # ---------------------------------------------------------------- lengths of text and lists
@@ -113,7 +90,6 @@ BOX = [49.999, 18.999, 50.01, 19.02]
     ("map_extract", {"city": "testowo", "bbox": [NAN, 18.999, 50.01, 19.02]}, "bbox"),
     ("map_extract", {"city": "testowo", "bbox": [49.999, 18.999, 95.0, 19.02]}, "latitude"),
     ("render_map", {"city": "testowo", "bbox": [49.999, 18.999, 50.01, INF]}, "bbox"),
-    ("render_map", {"city": "testowo", "itinerary": {"legs": [{"path": [[50.0, INF]]}]}}, "itinerary.legs.0.path"),
 ])
 def test_nan_infinity_and_out_of_range_coordinates_are_refused(server, name, args, where):
     text = refused(server, name, args, where)
@@ -125,7 +101,7 @@ def test_nan_infinity_and_out_of_range_coordinates_are_refused(server, name, arg
     ("find_places", {"city": "testowo", "near": [50.0, 19.0], "radius_m": INF}, "radius_m"),
     ("find_places", {"city": "testowo", "near": [50.0, 19.0], "radius_m": NAN}, "radius_m"),
     ("stops_near", {"city": "testowo", "point": [50.0, 19.0], "max_walk_min": NAN}, "max_walk_min"),
-    ("render_map", {"city": "testowo", "itinerary": {"legs": [{"path": [[50.0, NAN]]}]}}, "itinerary"),
+    ("render_map", {"city": "testowo", "bbox": [49.999, 18.999, 50.01, NAN]}, "bbox"),
 ])
 def test_nan_as_the_http_transport_lets_it_in_is_refused(server, name, args, where):
     """Python's JSON reader takes a bare NaN in an HTTP body; the in-memory client above turns it into null, so the
@@ -193,7 +169,7 @@ def test_an_unexpected_error_is_logged_by_kind_and_place(server, caplog, capsys,
 
     def boom(*a, **k):
         raise RuntimeError("SECRET-HOME-ADDRESS 12")
-    monkeypatch.setattr(srv, "_find_places", boom)
+    monkeypatch.setattr(srv, "search_places", boom)
     with caplog.at_level(logging.INFO, logger="mcp.server.mcpserver.server"):
         text, err = call(server, "find_places", {"city": "testowo", "query": "x"})
     stderr = capsys.readouterr().err
@@ -211,7 +187,7 @@ def test_an_unexpected_error_is_logged_by_kind_and_place(server, caplog, capsys,
     ("find_places", {"city": "testowo", "near": ["50.0", "19.0"]}, "near"),
     ("plan_trip", {**PLAN, "max_transfers": "2"}, "max_transfers"),
     ("departures", {"city": "testowo", "stop_id": 5}, "stop_id"),
-    ("render_map", {"city": "testowo", "itinerary": {"legs": [{"path": [["50.0", "19.0"]]}]}}, "itinerary"),
+    ("render_map", {"city": "testowo", "bbox": BOX, "size": "500"}, "size"),
 ])
 def test_strict_types(server, name, args, where):
     refused(server, name, args, where)
@@ -255,8 +231,7 @@ def test_text_that_looks_like_json_stays_text(server, query):
 def test_lists_and_objects_sent_as_json_text_still_work(server):
     _, err = call(server, "map_extract", {"city": "testowo", "bbox": "[49.999, 18.999, 50.01, 19.02]", "layers": '["water"]'})
     assert not err
-    itinerary = '{"legs": [{"mode": "walk", "path": [[50.0018, 19.0014], [50.0036, 19.0014]]}]}'
-    text, err = call(server, "render_map", {"city": "testowo", "itinerary": itinerary, "output": "svg"})
+    text, err = call(server, "render_map", {"city": "testowo", "bbox": BOX, "style": '{"water": "#9cc3e6"}', "output": "svg"})
     assert not err, text
 
 
@@ -282,7 +257,7 @@ def test_leftover_crash_classes_get_a_neutral_line(server, monkeypatch, capsys, 
 
     def boom(*a, **k):
         raise error
-    monkeypatch.setattr(srv, "_find_places", boom)
+    monkeypatch.setattr(srv, "search_places", boom)
     text = refused(server, "find_places", {"city": "testowo", "query": "x"}, "could not answer this request")
     assert str(error) not in text
     assert type(error).__name__ in capsys.readouterr().err
@@ -335,7 +310,7 @@ def test_a_deliberate_refusal_keeps_its_message(server, monkeypatch):
 
     def no(*a, **k):
         raise Refused("nothing to see near the river")
-    monkeypatch.setattr(srv, "_find_places", no)
+    monkeypatch.setattr(srv, "search_places", no)
     text = refused(server, "find_places", {"city": "testowo", "query": "x"})
     assert text.endswith("nothing to see near the river"), text
 
@@ -351,9 +326,9 @@ def test_an_unknown_tool_name_is_cut_in_the_answer_and_the_log(server, caplog):
 
 def test_a_refused_call_logs_at_most_five_argument_places(server, caplog):
     import logging
-    legs = [{"path": [["x", "y"]] * 50}] * 30
+    stops = [{"stop": 5, "minutes": "x"}] * 20  # 40 places wrong
     with caplog.at_level(logging.INFO, logger="mcp.server.mcpserver.server"):
-        _, err = call(server, "render_map", {"city": "testowo", "itinerary": {"legs": legs}})
+        _, err = call(server, "plan_stations", {"from": stops, "to": stops})
     assert err
     line = next(r.getMessage() for r in caplog.records if "rejected arguments" in r.getMessage())
     assert len(line) < 500 and "more" in line, line[:600]

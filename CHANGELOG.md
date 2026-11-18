@@ -2,6 +2,18 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- **One answer rule on every tool**, stated in the server's instructions and in [AGENTS.md](AGENTS.md#lean-by-default-more-on-demand): the default answer holds what a person asking needs and every id another tool takes; `detail: "full"` adds every field code needs, `limit` more rows, filters narrow the question; an answer that was cut says so in `note`, with how to get the rest.
+- Each tool's `detail` says what `full` adds there and about how much larger the answer gets (measured on real data: `departures` about 1.4 times, `line_info` 3 to 6, `walk_route` 3 to 4, `plan_trip` 2 to 3, `plan_stations` 5 to 9), instead of one sentence shared by five tools that was wrong for two of them.
+- Every argument has a description: `limit`, `max_transfers`, `max_walk_min` and a station's `minutes` had none. `render_map`'s `size` says a picture's cost grows with the square of its side.
+- `find_places` says in `note` when more places matched than it lists, and how to narrow the question or raise `limit`; `stops_near` says when more platforms than its 20 are within the walk, and points to `find_places`.
+- **Breaking:** `render_map` takes a trip one way, its `trip` reference: `itinerary` is gone. A call that passes it is refused with an error that says to pass the option's `trip`. What a model loads of the tool list is about 100 characters smaller although every argument now has a description.
+
+### Added
+- `departures` takes `mode` (`tram`, `bus`, `trolleybus`, `metro`, `rail`, `ferry`): "the next trams" from a stop that buses also serve is one call.
+
 ## 0.3.0 - 2026-11-18
 
 ### Changed

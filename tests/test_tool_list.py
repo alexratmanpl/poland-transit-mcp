@@ -34,7 +34,7 @@ def tools(server):
 def test_an_unknown_argument_is_refused_by_name_in_one_line(server):
     r = run(server, lambda c: c.call_tool("departures", {"city": "testowo", "stop_id": "T:A", "date": "2026-11-10"}))
     assert r.is_error and text(r) == ('Error executing tool departures: unknown argument "date"; departures takes '
-                                      "city, stop_id, at, line, to, limit, detail")
+                                      "city, stop_id, at, line, mode, to, limit, detail")
 
 
 def test_a_wrong_value_is_one_line_naming_the_argument(server):
@@ -99,7 +99,7 @@ def test_what_a_model_loads_stays_small(server, tools):
     instructions and each description at 4,096 characters."""
     loaded = [{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in tools]
     size = len(json.dumps(loaded, ensure_ascii=False))
-    assert size < 14_500, size  # 14,099 measured, +3%: about 6,000 of Claude's tokens for every tool, bounds included
+    assert size < 14_400, size  # 13,994 measured, +3%: about 6,000 of Claude's tokens for every tool, bounds included
     for t in tools:
         assert len(t.description) < 4096, t.name
     assert len(server.instructions) < 4096

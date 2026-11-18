@@ -85,7 +85,7 @@ def test_a_normal_call_is_answered(wire):
     ("find_places", '{"city":"testowo","near":[50.0,19.0],"radius_m":-Infinity}', "radius_m"),
     ("find_places", '{"city":"testowo","query":"Centrum","limit":NaN}', "limit"),
     ("stops_near", '{"city":"testowo","point":[NaN,19.0]}', "point"),
-    ("render_map", '{"city":"testowo","itinerary":{"legs":[{"path":[[50.0,19.0],[Infinity,19.0]]}]}}', "itinerary"),
+    ("render_map", '{"city":"testowo","bbox":[49.999,18.999,50.01,Infinity]}', "bbox"),
 ])
 def test_nan_and_infinity_in_the_body_are_refused_by_name(wire, tool, arguments, name):
     status, body = call(wire, tool, arguments)

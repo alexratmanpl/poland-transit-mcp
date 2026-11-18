@@ -40,18 +40,18 @@ def _iso(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
-def live_departures(city: City, stops: list[Stop], line: str | None, limit: int) -> dict | None:
+def live_departures(city: City, stops: list[Stop], line: str | None, limit: int, mode: str | None = None) -> dict | None:
     if not city.cfg or city.cfg.live != "ztm-gdansk" or not live_enabled(city.id):
         return None
     now = now_local()
     # schedule from an hour ago, so that delayed vehicles can still be matched
-    sched = scheduled_departures(city, stops, type(now)(now.date, max(0, now.secs - 3600)), line, 400)
+    sched = scheduled_departures(city, stops, type(now)(now.date, max(0, now.secs - 3600)), line, 400, mode=mode)
     try:
         with ThreadPoolExecutor(max_workers=6) as ex:
             feeds = list(zip(stops[:6], ex.map(lambda s: _fetch_ztm(s.id.removeprefix("G:")), stops[:6])))
         return _merge(sched, feeds, now, limit)
     except Exception as e:  # network down, timeout, bad or unexpected JSON: fall back to the schedule, labelled
-        fresh = scheduled_departures(city, stops, type(now)(now.date, max(0, now.secs - 3600)), line, 400)  # `sched` may be half-merged
+        fresh = scheduled_departures(city, stops, type(now)(now.date, max(0, now.secs - 3600)), line, 400, mode=mode)  # `sched` may be half-merged
         return {"ok": False, "status": f"unavailable ({type(e).__name__})",
                 "departures": [d for d in fresh if d["_secs"] >= now.secs][:limit]}
 

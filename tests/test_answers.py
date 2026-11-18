@@ -90,7 +90,7 @@ def test_an_error_keeps_its_own_quotes(server):
 def test_an_answer_that_does_not_match_its_shape_is_logged(server, monkeypatch, capsys):
     """The SDK refuses it with a bare "Error executing tool"; the server says where it differs (never the values)."""
     import poland_transit_mcp.server as srv
-    monkeypatch.setattr(srv, "_find_places", lambda *a, **k: [{"name": "Wawel", "kind": "museum"}])  # no point
+    monkeypatch.setattr(srv, "search_places", lambda *a, **k: ([{"name": "Wawel", "kind": "museum"}], False))  # no point
     r = run(server, lambda c: c.call_tool("find_places", {"city": "testowo", "query": "x"}))
     assert r.is_error
     err = capsys.readouterr().err
@@ -129,14 +129,6 @@ def test_a_map_without_fonts_says_so(server, monkeypatch):
     monkeypatch.setattr(srv, "picture_warning", lambda: "no fonts found on this machine: maps are drawn without labels")
     r = run(server, lambda c: c.call_tool("render_map", {"city": "testowo", "bbox": [*at(0, 0), *at(4, 4)]}))
     assert not r.is_error and "without labels" in r.structured_content["note"]
-
-
-def test_a_trip_between_cities_is_drawn_from_its_start(server):
-    plan = run(server, lambda c: c.call_tool("plan_trip", {"city": "alfa", "from": START, "to_city": "beta", "to": END,
-                                                           "depart_at": "2026-11-10 08:40", "detail": "full"}))
-    it = plan.structured_content["itineraries"][0]
-    r = run(server, lambda c: c.call_tool("render_map", {"city": "alfa", "itinerary": it, "output": "svg"}))
-    assert not r.is_error, r.content[0].text
 
 
 def test_a_trip_between_cities_has_a_reference_that_draws_its_start(server):
