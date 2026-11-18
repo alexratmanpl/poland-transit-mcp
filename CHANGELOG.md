@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.0 - 2026-11-18
 
 ### Changed
 - **Answers carry credit ids, not credit text:** `source` (the full credits, repeated in every answer) is replaced by `credits`, a list of ids (`osm`, `<city>/<feed key>`, `<city>/live`). The full text comes from the new `credits` tool, the `credits://all` resource, or `poland-transit-mcp credits`. A feed that is not available shows in `as_of`.
