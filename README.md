@@ -14,7 +14,7 @@ Built on OpenStreetMap and the operators' official GTFS timetables. Each answer 
 
 <img src="docs/demo-plan-trip.svg" alt="plan_trip answering a trip in Gdańsk, in a terminal" width="760">
 
-**Warszawa · Kraków · Katowice (GZM) · Wrocław · Poznań · Gdańsk · Toruń · Zakopane**<br>
+**Warszawa · Kraków · Katowice (GZM) · Wrocław · Poznań · Gdańsk · Lublin · Toruń · Zakopane**<br>
 and between them by train (13 rail operators) or FlixBus
 
 </div>
@@ -41,7 +41,7 @@ memory settings, Claude Desktop and other clients, troubleshooting and every fla
 
 - `--cities a,b` or `all`: which cities to serve. Add `poland` for trips between cities (trains and FlixBus).
 - `--memory-budget 480`: memory target for the whole process, in MB. Cities load on their first query; when the budget is reached, the least recently used city is unloaded. At start, the server says if your cities need more to stay loaded together, and how much. See [docs/SCALING.md](docs/SCALING.md).
-- `--http 8080`: Streamable HTTP on `127.0.0.1:8080/mcp` instead of stdio.
+- `--http 8080`: Streamable HTTP on `127.0.0.1:8080/mcp` instead of stdio (`--host 0.0.0.0` in a container; there is no authentication, see [SECURITY.md](SECURITY.md)).
 - `--live gdansk`: opt in to ZTM Gdańsk's real-time estimates.
 - `OTEL_EXPORTER_OTLP_ENDPOINT=…` with the `otel` extra: traces and metrics to your collector. See [Observability](#observability).
 - `--data-dir DIR`, `--no-download`: where city files are, and whether missing ones are fetched. Without `--data-dir` (or `POLAND_TRANSIT_DATA`) a source checkout uses its own `data/cities`, wherever you start the server, and an installed copy uses `~/.cache/poland-transit-mcp`; the working directory is never searched.
@@ -143,16 +143,21 @@ a few days apart. With three large cities plus `poland`, give it `--memory-budge
 
 ## Tools
 
+Answers are lean by default: what only code needs (line geometry, trip ids, colours, the points of a leg's ends, the
+full data dates) comes with `detail: "full"` on `departures`, `line_info`, `walk_route`, `plan_trip` and
+`plan_stations`. Each tool's `outputSchema` marks those fields "only with detail=\"full\"".
+
 | Tool | Answers |
 |---|---|
 | `list_cities` | cities, data dates, features, search engine |
 | `find_places` | attractions, museums, parks, stations, stops, hotels and streets, by name or proximity |
 | `stops_near` | stops by **walking time**, with the lines serving each |
 | `departures` | scheduled (and opt-in live) departures, with the `operator`; on `poland`, trains with platform and track |
-| `line_info` | a line's stops, geometry, first/last run and frequency; on `poland`, a train by number or name |
+| `line_info` | a line's stops, first/last run and frequency (geometry with `detail`); on `poland`, a train by number or name |
 | `walk_route` | a walking path that never crosses water except on a bridge |
 | `plan_trip` | up to 3 door-to-door itineraries, `depart_at` or `arrive_by`; with `to_city`, between cities by train or FlixBus |
-| `map_extract` / `render_map` | map data for an area, or an SVG of an area or a trip |
+| `plan_stations` | trains and coaches between stations of `poland`: several start and end stops, each with its own minutes before boarding or after arriving (for a caller that brings the traveller to a station itself) |
+| `map_extract` / `render_map` | map data for an area; a map image (PNG, or SVG on request) of an area or of a trip by its `trip` reference |
 
 <img src="docs/trip-gdansk.svg" alt="render_map: Archikatedra Oliwska to Westerplatte by tram 12 and bus 106" width="560">
 
@@ -174,22 +179,24 @@ a few days apart. With three large cities plus `poland`, give it `--memory-budge
 - **Code** is MIT. **City files** are ODbL 1.0 (© OpenStreetMap contributors) for the map, and each timetable keeps its publisher's terms ([DATA-LICENSE.md](DATA-LICENSE.md)). No data is in git.
 - **Not cleared for redistribution:** Warszawa (ZTM Warszawa's terms not yet read), Zakopane's timetable (the city's site says "all rights reserved"; the transcription is not published, so a build gives map and walking only) and `poland` (Koleje Mazowieckie's terms not yet read; PKP PLK forbids reselling the raw data). You can build them for your own use; no prebuilt file of them will be published until that changes. Details in [DATA-LICENSE.md](DATA-LICENSE.md).
 - **Timetables** are from:
-  - [ZTM Gdańsk](http://www.ztm.gda.pl/otwarty_ztm)
+  - [ZTM Gdańsk](https://www.ztm.gda.pl/otwarty_ztm)
   - [ZTP Kraków](https://gtfs.ztp.krakow.pl)
   - [UM Wrocław](https://open-data.cui.wroclaw.pl)
   - [ZTM Poznań](https://www.ztm.poznan.pl/otwarte-dane/dla-deweloperow/)
   - [ZTM Warszawa](https://ztm.waw.pl)
   - [ZTM GZM](https://otwartedane.metropoliagzm.pl)
   - Gmina Miasta Toruń and MZK Toruń
+  - [ZDiTM Lublin](https://www.zdtm.lublin.eu)
   - [Gmina Miasto Zakopane](https://www.zakopane.pl/komunikacjamiejska/rozklady-jazdy) (PDF timetables, transcribed and checked twice)
 - **Trains:** [PKP Polskie Linie Kolejowe S.A.](https://www.plk-sa.pl/klienci-i-kontrahenci/api-otwarte-dane) open railway data, and Koleje Mazowieckie.
 - **Coaches:** FlixBus, via [transport.data.gouv.fr](https://transport.data.gouv.fr/datasets/flixbus-horaires-theoriques-du-reseau-europeen-1) (ODbL), mirrored by the [Mobility Database](https://mobilitydatabase.org).
-- **GTFS conversions** of Warszawa, Katowice, Toruń and the Polish trains: **Mikołaj Kuranowski**, [mkuran.pl/gtfs](https://mkuran.pl/gtfs/) ([WarsawGTFS](https://github.com/MKuranowski/WarsawGTFS)).
+- **GTFS conversions** of Warszawa, Katowice, Toruń, Lublin and the Polish trains: **Mikołaj Kuranowski**, [mkuran.pl/gtfs](https://mkuran.pl/gtfs/) ([WarsawGTFS](https://github.com/MKuranowski/WarsawGTFS)).
 - **Feeds found via** [Mobility Database](https://mobilitydatabase.org) and [Transitland](https://github.com/transitland/transitland-atlas).
-- **Built with** [osmium-tool](https://osmcode.org/osmium-tool/), the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), [NumPy](https://numpy.org), [SciPy](https://scipy.org), [PyO3](https://pyo3.rs) and [OpenTelemetry](https://opentelemetry.io).
+- **Built with** [osmium-tool](https://osmcode.org/osmium-tool/), the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), [NumPy](https://numpy.org), [SciPy](https://scipy.org), [PyO3](https://pyo3.rs), [OpenTelemetry](https://opentelemetry.io), [resvg](https://github.com/linebender/resvg) (map PNGs, MIT) and, optionally, [Pillow](https://python-pillow.github.io) (smaller PNGs, MIT-CMU).
 
-Every answer carries `source` (credits and licences) and `as_of` (data dates). When the data can't
-answer, it says so instead of guessing.
+Every answer names its data by short ids in `credits` and gives each source's publication date in `as_of` (all of a
+feed's dates with `detail: "full"` and in `list_cities`); the `credits` tool (or the `credits://all` resource) has
+the full credit and licence of each id. When the data can't answer, it says so instead of guessing.
 
 ## More
 
@@ -208,8 +215,8 @@ answer, it says so instead of guessing.
 **Development:**
 
 ```bash
-uv sync --extra dev && uv run pytest      # 77 passed, 9 skipped without the engine or city data
+uv sync --extra dev && uv run pytest      # the engine's tests skip without it, the Gdańsk data tests without that file
 ```
 
-Add `--extra fast` to build and test the Rust engine as well (needs a Rust toolchain): 81 passed, 5 skipped;
-86 passed once `data/cities/gdansk.sqlite` exists.
+Add `--extra fast` to build and test the Rust engine as well (needs a Rust toolchain); the Gdańsk data tests run once
+`data/cities/gdansk.sqlite` exists.

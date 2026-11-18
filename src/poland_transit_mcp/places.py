@@ -5,9 +5,10 @@ import json
 import math
 import re
 
+from .errors import Refused
 from .city import City
 from .geo import fast_dist, pt
-from .text import tokens
+from .text import quoted, tokens
 
 KINDS = ("attraction", "museum", "park", "station", "stop", "hotel", "landmark", "street")
 _BOOST = {"station": 8, "attraction": 6, "museum": 6, "landmark": 5, "park": 4, "stop": 3, "street": 2, "hotel": 0}
@@ -87,14 +88,15 @@ def resolve_point(city: City, p) -> tuple[tuple[float, float], str, dict | None]
     """[lat, lon] or a place name → (point, label, resolved place). Raises ValueError with a readable message."""
     if isinstance(p, (list, tuple)):
         if len(p) != 2:
-            raise ValueError("a point is [lat, lon] or a place name")
+            raise Refused("a point is [lat, lon] or a place name")
         lat, lon = float(p[0]), float(p[1])
         a, b, c, d = city.bbox
         if not (a <= lat <= c and b <= lon <= d):
-            raise ValueError(f"point [{lat}, {lon}] is outside {city.id} (bbox {city.bbox})")
+            raise Refused(f"point [{lat}, {lon}] is outside {city.id} (bbox {city.bbox})")
         return (lat, lon), f"[{round(lat, 5)}, {round(lon, 5)}]", None
     hits = find_places(city, query=str(p), limit=1)
     if not hits:
-        raise ValueError(f'no place named "{p}" found in {city.id}; try find_places or pass [lat, lon]')
+        raise Refused(f'no place named {quoted(p)} found in {city.id}; try find_places or pass [lat, lon]. A place in '
+                         'another city: plan_trip with to_city; a station elsewhere: plan_stations')
     h = hits[0]
     return (h["at"][0], h["at"][1]), h["name"], h

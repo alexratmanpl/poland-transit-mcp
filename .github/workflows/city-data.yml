@@ -20,7 +20,7 @@ jobs:
       matrix:
         # warszawa: ZTM's terms not read yet. zakopane: map and walking only; the inputs of
         # scripts/zakopane_gtfs.py are not published and the timetable's terms are unclear.
-        city: [gdansk, krakow, wroclaw, poznan, torun, katowice, zakopane]
+        city: [gdansk, krakow, wroclaw, poznan, torun, lublin, katowice, zakopane]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,6 +30,19 @@ jobs:
           python-version: "3.13"
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
       - run: uv sync
+      - name: Start from the published file
+        # the build compares its new file with this one and refuses a worse one (exit code 3), so the upload below
+        # never replaces a good file with one that lost a timetable; none is published yet on the first run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p data/cities
+          if gh release download data-latest -p "${{ matrix.city }}.sqlite.gz" -D data/cities 2>/dev/null; then
+            gunzip -f "data/cities/${{ matrix.city }}.sqlite.gz"
+          else
+            echo "no published ${{ matrix.city }}.sqlite: nothing to compare with"
+          fi
       - run: uv run poland-transit-mcp build ${{ matrix.city }} --download
       - name: Check the build
         run: |

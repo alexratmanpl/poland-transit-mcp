@@ -18,7 +18,8 @@ def test_time_parsing_and_night_services():
     assert parse_when("2026-11-20 07:05", now) == LocalTime(20261120, 7 * 3600 + 5 * 60)
     assert parse_when("2026-11-20T06:05:00Z", now) == LocalTime(20261120, 7 * 3600 + 5 * 60)  # CET = UTC+1
     assert parse_when("2026-07-20T06:05:00Z", now) == LocalTime(20260720, 8 * 3600 + 5 * 60)  # CEST = UTC+2
-    assert parse_when("soon", now) is None
+    assert parse_when("25:10", now) == LocalTime(20261116, 25 * 3600 + 600)  # the night after the day
+    assert parse_when(None, now) == now
     assert parse_gtfs_time("25:10:00") == 25 * 3600 + 600
     assert fmt_wall(20261231, 25 * 3600 + 600) == ("2027-01-01", "01:10")
     assert add_days(20260228, 1) == 20260301
@@ -80,7 +81,7 @@ def test_failed_download_gives_one_line_and_leaves_nothing_behind(tmp_path, monk
 
     from poland_transit_mcp import cli
 
-    def refuse(url, timeout=None):
+    def refuse(url, timeout=None, context=None):
         raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
     monkeypatch.setattr(urllib.request, "urlopen", refuse)
     target = tmp_path / "cities"
@@ -90,3 +91,64 @@ def test_failed_download_gives_one_line_and_leaves_nothing_behind(tmp_path, monk
     err = capsys.readouterr().err
     assert "could not download" in err and "404" in err
     assert not target.exists()
+
+
+@pytest.mark.parametrize("args, env, host, warned", [
+    ([], None, "127.0.0.1", False),
+    (["--host", "0.0.0.0"], None, "0.0.0.0", True),
+    ([], "0.0.0.0", "0.0.0.0", True),
+    (["--host", "::1"], None, "::1", False),
+    (["--host", "[::1]"], None, "::1", False),
+    (["--host", "127.0.0.1"], "0.0.0.0", "127.0.0.1", False),  # the flag wins over the variable
+])
+def test_http_binds_loopback_unless_told_otherwise(tmp_path, monkeypatch, capsys, args, env, host, warned):
+    from fixture import build_fixture
+
+    from poland_transit_mcp import cli, server
+    runs = []
+
+    class Fake:
+        def run(self, transport, **kw):
+            runs.append((transport, kw))
+    monkeypatch.setattr(server, "create_server", lambda pool: Fake())
+    monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
+    if env:
+        monkeypatch.setenv("POLAND_TRANSIT_HOST", env)
+    else:
+        monkeypatch.delenv("POLAND_TRANSIT_HOST", raising=False)
+    build_fixture(tmp_path)
+    cli.main(["--data-dir", str(tmp_path), "--cities", "testowo", "--no-download", "--http", "8080", *args])
+    assert runs == [("streamable-http", {"host": host, "port": 8080, "stateless_http": True, "json_response": True})]
+    assert ("no authentication" in capsys.readouterr().err) is warned
+
+
+def test_the_host_variable_does_not_stop_stdio(tmp_path, monkeypatch):
+    from fixture import build_fixture
+
+    from poland_transit_mcp import cli, server
+    runs = []
+
+    class Fake:
+        def run(self, *a, **kw):
+            runs.append((a, kw))
+    monkeypatch.setattr(server, "create_server", lambda pool: Fake())
+    monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
+    monkeypatch.setenv("POLAND_TRANSIT_HOST", "0.0.0.0")
+    build_fixture(tmp_path)
+    cli.main(["--data-dir", str(tmp_path), "--cities", "testowo", "--no-download"])
+    assert runs == [((), {})]  # stdio
+
+
+def test_host_without_http_is_refused(tmp_path, capsys):
+    from poland_transit_mcp import cli
+    with pytest.raises(SystemExit):
+        cli.main(["--data-dir", str(tmp_path), "--host", "0.0.0.0"])
+    assert "--host needs --http" in capsys.readouterr().err
+
+
+def test_clip_line_keeps_a_segment_that_crosses_the_box_with_both_ends_outside():
+    from poland_transit_mcp.geo import clip_line
+    assert clip_line([(0, 0), (2, 2)], (0.5, 0.5, 1.5, 1.5)) == [[(0, 0), (2, 2)]]
+    assert clip_line([(0, 0), (0, 2)], (0.5, 0.5, 1.5, 1.5)) == []  # passes beside it
+    # inside, out, and back: two runs, each reaching one point beyond the edge
+    assert clip_line([(1, 1), (1, 3), (1, 4), (1, 1.2)], (0.5, 0.5, 1.5, 1.5)) == [[(1, 1), (1, 3)], [(1, 4), (1, 1.2)]]

@@ -28,7 +28,7 @@ async def run() -> tuple[dict, str]:
     async with Client(params) as c:
         plan = json.loads((await c.call_tool("plan_trip", REQ)).content[0].text)
         it = next(i for i in plan["itineraries"] if any(l["mode"] != "walk" for l in i["legs"]))
-        svg = json.loads((await c.call_tool("render_map", {"city": "gdansk", "itinerary": it, "width": 820})).content[0].text)["svg"]
+        svg = (await c.call_tool("render_map", {"city": "gdansk", "trip": it["trip"], "width": 820, "output": "svg"})).structured_content["svg"]
     return plan, svg
 
 
@@ -46,7 +46,7 @@ for i in plan["itineraries"][:2]:
         else:
             lines.append(("ride", f'    {l["mode"]:<4} {l["line"]:<4} {l["depart"]} {l["from"]["name"]} → {l["arrive"]} {l["to"]["name"]}  ({l["stops"]} stops, {l["time"]})'))
     lines.append(("", ""))
-lines.append(("dim", "source: " + " · ".join(plan["source"])))
+lines.append(("dim", "credits: " + " · ".join(plan["credits"])))
 lines.append(("dim", "as_of:  " + " · ".join(f"{k}: {v}" for k, v in plan["as_of"].items())))
 lines = [(c, t if len(t) <= 118 else t[:117] + "…") for c, t in lines]
 

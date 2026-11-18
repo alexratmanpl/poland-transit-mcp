@@ -201,8 +201,9 @@ def near(city_id: str, r: float, c: float) -> list[float]:
 def write_national_gtfs(d: Path) -> tuple[Path, Path]:
     """Trains (PL): IC 101 "Testowy" alfa 09:00 → alfa east 09:10 → beta 11:00 and IC 103 at 13:00, on
     weekdays, with platforms and tracks. Coaches (FX, times in UTC, stops filtered by time zone): every day
-    Ausland 05:00 → alfa coach stop 07:30 → beta coach stop 09:30 UTC, and a night run that only reaches
-    alfa after midnight UTC (25:30 → beta 27:00)."""
+    Ausland (Berlin time) 05:00 → alfa coach stop 07:30 → beta coach stop 09:30 → Wilno (Vilnius time, another
+    clock) 13:00 UTC, a night run that only reaches alfa after midnight UTC (25:30 → beta 27:00), and a run
+    Ausland → Drezno that never reaches Poland."""
     rail, coach = d / "rail", d / "coach"
     rail.mkdir(parents=True, exist_ok=True)
     coach.mkdir(parents=True, exist_ok=True)
@@ -229,14 +230,15 @@ def write_national_gtfs(d: Path) -> tuple[Path, Path]:
         coach: {
             "agency.txt": "agency_id,agency_name,agency_url,agency_timezone\nFX,FlixBus-eu,https://example.invalid,UTC\n",
             "stops.txt": "stop_id,stop_name,stop_lat,stop_lon,stop_timezone\n"
-                         "X,Ausland,52.5,13.4,Europe/Berlin\n"
+                         "X,Ausland,52.5,13.4,Europe/Berlin\nV,Wilno,54.69,25.28,Europe/Vilnius\nD,Drezno,51.05,13.74,Europe/Berlin\n"
                          f"AC,Alfa Dworzec Autobusowy,{ll('alfa', 4, 2)},Europe/Warsaw\nBC,Beta Dworzec Autobusowy,{ll('beta', 16, 13)},Europe/Warsaw\n",
             "routes.txt": "route_id,agency_id,route_short_name,route_long_name,route_type\nF1,FX,FlixBus 1,Ausland - Beta,3\n",
             "calendar.txt": "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\n"
                             "ALL,1,1,1,1,1,1,1,20260101,20261231\n",
-            "trips.txt": "route_id,service_id,trip_id\nF1,ALL,F1-day\nF1,ALL,F1-night\n",
+            "trips.txt": "route_id,service_id,trip_id\nF1,ALL,F1-day\nF1,ALL,F1-night\nF1,ALL,F1-abroad\n",
             "stop_times.txt": "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
-                              "F1-day,05:00:00,05:00:00,X,1\nF1-day,07:30:00,07:30:00,AC,2\nF1-day,09:30:00,09:30:00,BC,3\n"
+                              "F1-day,05:00:00,05:00:00,X,1\nF1-day,07:30:00,07:30:00,AC,2\nF1-day,09:30:00,09:30:00,BC,3\nF1-day,13:00:00,13:00:00,V,4\n"
+                              "F1-abroad,06:00:00,06:00:00,X,1\nF1-abroad,08:00:00,08:00:00,D,2\n"
                               "F1-night,20:00:00,20:00:00,X,1\nF1-night,25:30:00,25:30:00,AC,2\nF1-night,27:00:00,27:00:00,BC,3\n",
         },
     }

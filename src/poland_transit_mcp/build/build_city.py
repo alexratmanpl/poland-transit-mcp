@@ -10,6 +10,8 @@ except for the national layer.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import re
 import shutil
@@ -19,21 +21,27 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-from ..config import CITIES, OSM_ATTRIBUTION, OSM_SOURCES, CityConfig, osm_url
+from .. import datasets
+from ..config import OSM_ATTRIBUTION, OSM_SOURCES, CityConfig, osm_url
 from ..geo import LatLon, bbox_of, centroid, encode_parts, fast_dist, haversine, ring_area, simplify
 from ..schema import SCHEMA
 from ..text import fold
+from ..timeutil import same_clock
 from ..walk import FLAG_BRIDGE, FLAG_STEPS, FLAG_TUNNEL, GraphArrays, WalkGraph
+from .. import net
 from .gtfs import compute_transfers, import_feed
+from .safeguard import EXIT_REJECTED, expiry_warnings, read_feeds, worse_feeds
 
 T0 = time.perf_counter()
+FAILED_DOWNLOADS: list[str] = []  # repeated after writing, since the build then uses the previous file, if any
 
 
 def log(*a) -> None:
@@ -57,7 +65,7 @@ def download(url: str, dest: Path) -> bool:
     part = dest.with_name(dest.name + ".part")
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "poland-transit-mcp-build"})
-        with urllib.request.urlopen(req, timeout=1800) as r, open(part, "wb") as out:  # noqa: S310
+        with net.urlopen(req, timeout=1800) as r, open(part, "wb") as out:
             while chunk := r.read(1 << 20):
                 out.write(chunk)
             last_modified = r.headers.get("Last-Modified")
@@ -67,7 +75,8 @@ def download(url: str, dest: Path) -> bool:
         dest.with_name(re.sub(r"(\.zip|\.osm\.pbf)$", "", dest.name) + ".meta.json").write_text(json.dumps(meta, indent=1))
         return True
     except Exception as e:  # noqa: BLE001 - a failed source is reported and the build continues
-        log(f"download failed: {url}: {e}")
+        log(f"download failed: {url}: {e}{net.tls_note(e)}")
+        FAILED_DOWNLOADS.append(url)
         part.unlink(missing_ok=True)
         return False
 
@@ -354,11 +363,12 @@ def download_feeds(city: CityConfig, raw: Path) -> None:
         if f.latest_link:  # dataset page listing dated files, newest first
             try:
                 req = urllib.request.Request(f.url, headers={"User-Agent": "poland-transit-mcp-build"})
-                page = urllib.request.urlopen(req, timeout=60).read().decode("utf-8", "replace")  # noqa: S310
+                page = net.urlopen(req, timeout=60).read().decode("utf-8", "replace")
                 m = re.search(f.latest_link, page)
                 url = urllib.parse.urljoin(f.url, m[1]) if m else None
             except Exception as e:  # noqa: BLE001
-                log(f"could not read {f.url}: {e}")
+                log(f"could not read {f.url}: {e}{net.tls_note(e)}")
+                FAILED_DOWNLOADS.append(f.url)
                 url = None
         if url:
             log(f"downloading {url}")
@@ -379,16 +389,87 @@ def import_feeds(db: sqlite3.Connection, city: CityConfig, raw: Path, graph: Wal
     return feeds
 
 
-def finish(db: sqlite3.Connection, tmp: Path, out: Path) -> None:
+def _agency_zones(src: Path) -> set[str]:
+    """The agency_timezone values of a feed (a zip or a folder)."""
+    try:
+        if src.is_dir():
+            text = (src / "agency.txt").read_text(encoding="utf-8-sig")
+        else:
+            with zipfile.ZipFile(src) as z:
+                text = z.read("agency.txt").decode("utf-8-sig")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return set()
+    return {r.get("agency_timezone", "").strip() for r in csv.DictReader(io.StringIO(text))} - {""}
+
+
+def clock_problems(city: CityConfig, raw: Path, feeds: list[dict]) -> list[str]:
+    """Feeds whose times would be read on the wrong clock. The server reads every file on Polish time
+    (timeutil.TZ, and gtfs.WARSAW for feeds in UTC), so the data set's zone and each feed's agency_timezone
+    must keep Europe/Warsaw's UTC offsets over the feed's dates. Nothing per stop yet."""
+    out = []
+    ok = [(f, rec) for f, rec in zip(city.feeds, feeds) if rec.get("status") == "ok"]
+    today = datetime.now(timezone.utc).date()
+    span = ((min(r["start_date"] for _, r in ok), max(r["end_date"] for _, r in ok)) if ok else
+            (int(today.strftime("%Y%m%d")), int((today + timedelta(days=400)).strftime("%Y%m%d"))))
+    if not same_clock(city.timezone, *span):  # also with no timetable: the file still states its zone
+        return [f"{city.id}: time zone {city.timezone!r} is unknown or does not keep Polish time over {span[0]}..{span[1]} "
+                "(only zones whose clock agrees with Europe/Warsaw are supported)"]
+    for f, rec in ok:
+        span = (rec["start_date"], rec["end_date"])
+        if f.utc_times:  # converted to Polish time per date at import
+            continue
+        src = raw / city.id / (f.key if f.local else f"{f.key}.zip")
+        for z in sorted(_agency_zones(src)):
+            if not same_clock(z, *span):
+                out.append(f"GTFS {f.key}: agency_timezone {z!r} is unknown or does not keep Polish time over {span[0]}..{span[1]}")
+    return out
+
+
+def dataset_meta(city: CityConfig) -> dict[str, str]:
+    """What the server needs from the data set's definition, kept in the file so it needs no definitions file."""
+    return {"timezone": city.timezone, "notes": json.dumps(list(city.notes), ensure_ascii=False),
+            "intercity_notes": json.dumps(list(city.intercity_notes), ensure_ascii=False)}
+
+
+def refuse_wrong_clocks(db: sqlite3.Connection, tmp: Path, city: CityConfig, raw: Path, feeds: list[dict]) -> None:
+    problems = clock_problems(city, raw, feeds)
+    if problems:
+        db.close()
+        tmp.unlink(missing_ok=True)
+        for line in problems:
+            log(f"REFUSED: {line}")
+        sys.exit(f"not built: {city.id} would be read on the wrong clock (see above)")
+
+
+def finish(db: sqlite3.Connection, tmp: Path, out: Path, feeds: list[dict], force: bool = False) -> None:
+    """Writes the new file in place of the old one, unless a timetable got worse (build/safeguard.py)."""
     db.execute("COMMIT")
     db.execute("ANALYZE")
     db.execute("VACUUM")
     db.close()
+    current = read_feeds(out)
+    worse = worse_feeds(current, feeds)
+    failed = [f"WARNING: download failed, so this build used the previous file, if any: {u}" for u in FAILED_DOWNLOADS]
+    if worse and not force:
+        rejected = out.with_name(out.name + ".rejected")
+        tmp.replace(rejected)
+        for line in worse:
+            log(f"REFUSED: {line}")
+        log(f"kept the last good file {out}; the new one is {rejected}. Fix the feed, or rerun with --force to "
+            "replace it anyway")
+        for line in failed + [f"WARNING: kept file: {w}" for w in expiry_warnings(current or [])]:
+            log(line)
+        sys.exit(EXIT_REJECTED)
+    for line in worse:
+        log(f"replaced anyway (--force): {line}")
     tmp.replace(out)
+    out.with_name(out.name + ".rejected").unlink(missing_ok=True)
     log(f"wrote {out}: {out.stat().st_size / 1e6:.1f} MB")
+    for line in failed + [f"WARNING: {w}" for w in expiry_warnings(feeds)]:
+        log(line)
 
 
-def build_national(city: CityConfig, root: Path, fetch: bool) -> None:
+def build_national(city: CityConfig, root: Path, fetch: bool, force: bool = False) -> None:
     """The national layer: the feeds' stations, trains and coaches, with foot transfers between
     nearby stations along a straight line × 1.3. No map, no walking graph, no places."""
     raw, out_dir = root / "raw", root / "cities"
@@ -403,6 +484,7 @@ def build_national(city: CityConfig, root: Path, fetch: bool) -> None:
     db.executescript("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;" + SCHEMA)
     db.execute("BEGIN")
     feeds = import_feeds(db, city, raw, None)
+    refuse_wrong_clocks(db, tmp, city, raw, feeds)
     log(f"transfers: {compute_transfers(db, None)}")
     lat0, lat1, lon0, lon1 = db.execute("SELECT MIN(lat), MAX(lat), MIN(lon), MAX(lon) FROM stops").fetchone()
     bbox = [round(lat0, 3), round(lon0, 3), round(lat1, 3), round(lon1, 3)] if lat0 is not None else list(city.bbox)
@@ -410,22 +492,33 @@ def build_national(city: CityConfig, root: Path, fetch: bool) -> None:
         "city": city.id, "name": city.name, "bbox": json.dumps(bbox), "kind": "national",
         "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "osm": json.dumps({}), "feeds": json.dumps(feeds, ensure_ascii=False), "schema_version": "1",
+        **dataset_meta(city),
     }.items():
         db.execute("INSERT INTO meta(key, value) VALUES (?, ?)", (k, v))
-    finish(db, tmp, out)
+    finish(db, tmp, out, feeds, force)
 
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="poland-transit-mcp build")
-    ap.add_argument("city", choices=sorted(CITIES))
+    ap.add_argument("city", help="a built-in data set (config.py) or one from --datasets")
     ap.add_argument("--download", action="store_true", help="fetch the OSM extract and GTFS feeds from their sources first")
     ap.add_argument("--skip-gtfs", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="replace the city file even when a timetable is missing, skipped or much smaller than in the current one")
     ap.add_argument("--data-dir", default="data", help="root for raw/, work/ and cities/ (default ./data)")
+    ap.add_argument("--datasets", metavar="FILE", default=None,
+                    help=f"JSON file defining more data sets (datasets.py); default ${datasets.ENV}")
     a = ap.parse_args(argv)
-    city = CITIES[a.city]
+    try:
+        known = datasets.registry(a.datasets)
+    except ValueError as e:
+        ap.error(str(e))
+    if a.city not in known:
+        ap.error(f"unknown data set {a.city!r}; known: {', '.join(sorted(known))}")
+    city = known[a.city]
     root = Path(a.data_dir).resolve()
     if city.national:
-        build_national(city, root, a.download)
+        build_national(city, root, a.download, a.force)
         return
     require_osmium()  # fail fast, before any download, with an install hint
     raw, work, out_dir = root / "raw", root / "work" / city.id, root / "cities"
@@ -473,6 +566,7 @@ def main(argv: list[str] | None = None) -> None:
     b.features(feat_json)
     log(f"features: {b.feature_id}")
     feeds = import_feeds(db, city, raw, graph, a.skip_gtfs)
+    refuse_wrong_clocks(db, tmp, city, raw, feeds)
     log("transfers")
     log(f"transfers: {compute_transfers(db, graph)}")
     log(f"places: {b.write_places()}")
@@ -485,9 +579,10 @@ def main(argv: list[str] | None = None) -> None:
                            "downloaded_at": osm_dl.get("downloaded_at"), "timestamp": ts[1] if ts else "unknown",
                            "attribution": OSM_ATTRIBUTION}),
         "feeds": json.dumps(feeds, ensure_ascii=False), "schema_version": "1",
+        **dataset_meta(city),
     }.items():
         db.execute("INSERT INTO meta(key, value) VALUES (?, ?)", (k, v))
-    finish(db, tmp, out)
+    finish(db, tmp, out, feeds, a.force)
 
 
 if __name__ == "__main__":

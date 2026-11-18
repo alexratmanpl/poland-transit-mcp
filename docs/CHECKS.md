@@ -68,6 +68,41 @@ The city's website shows one minute later for the first three. Not checked: whic
 
 
 
+### Lublin: ZDiTM Lublin, `https://www.zdtm.lublin.eu/pl/rozklady/<stop>/<line>`
+
+Checked on 2026-11-17 against the city file built that day (mkuran.pl feed `feed_version` 2026-10-31, Last-Modified
+2026-11-06; OSM `lubelskie` 2026-11-16T21:22:36Z). The operator publishes one page per stop pole and line, for the
+timetable "obowiązujące od 2026-10-31", the same date as the feed. The feed's `stop_id` is the operator's pole number,
+so each check compares the same pole. Pages were fetched over HTTPS and the times read from each day type's table
+(hour columns, minutes below). Line ids in the URLs are padded to three characters (`045`, `0N1`). Letters after a
+minute (`06a`) mark route variants. Queries were for Wednesday 2026-11-18,
+Saturday 2026-11-21 and the night from Friday 2026-11-20.
+
+| Check | Ours | Operator page (observed) | Verdict |
+|---|---|---|---|
+| Trolleybus 150 @ Ogród Saski 03 [L:1003] from 08:00, Wed | 08:11, 08:26, 08:41, 08:56 → Os. Poręba | weekday ("dzień powszedni, rok szkolny"): 07:55, **08:11, 08:26, 08:41, 08:56**, 09:11. All 60 weekday, 35 Saturday and 26 Sunday times on the page equal the feed's. | **match** |
+| Trolleybus 150 @ the same pole from 08:00, Sat | 08:22, 08:52, 09:22, 09:52 | Saturday: 07:52, **08:22, 08:52, 09:22, 09:52** | **match** |
+| Dworzec Lublin from 12:00, Wed: trolleybus 153 [L:3421], bus 45 and trolleybus 161 [L:3422] | 153: 12:10, 12:40, 13:10 → Węglin · 45: 12:04, 12:34 → Mełgiewska WSEI, 13:06 → Metalurgiczna · 161: 12:04 → Felin | 153: **12:10, 12:40, 13:10** · 45: **12:04, 12:34, 13:06a** ("a" = to Metalurgiczna) · 161: 11:34, **12:04**, 12:34 | **match** |
+| Night bus N1 @ Brama Krakowska 02 [L:1032] from 23:00, Fri | 23:25, then 00:25, 01:25, 02:25, 03:25 (Sat) → Żeglarska | "komunikacja nocna": **23:25, 00:25, 01:25, 02:25, 03:25**, 04:25. Runs on Friday and Saturday nights. | **match** |
+
+`plan_trip` Dworzec Lublin → Plac Litewski, Wednesday 2026-11-18 09:00: bus 74 Dworzec Lublin 09:03 → Ogród Saski
+09:13, then 705 m on foot, arriving 09:21. The operator's pages list 74 at Dworzec Lublin 52 at **09:03** and at
+Ogród Saski 03 at **09:13**: **match**. The second and third options (45 → 17 → 159, and 45 → 17) also match the
+pages for 45 at 09:05, 17 at Plac Bychawski 03 at 09:10 and 159 at Zamojska 02 at 09:18.
+
+Not compared: the operator's line list has lines 200–202 (All Saints' Day cemetery lines, 31 October–2 November),
+which are not in the feed (SOURCES.md).
+
+**Trains and trips between cities.** The national layer has Lublin Główny as eight stop ids (seven platform and track positions and a fallback). On
+Wednesday 2026-11-18 it lists PolRegio regional trains and PKP Intercity trains, for example IC 2520/1 Kopernik
+06:27 → Bydgoszcz Główna (pl. 1, tr. 52), IC 1338/9 Wisłok 07:53 → Rzeszów Główny, IC 3538/9 Bystrzyca 08:25 →
+Bydgoszcz Główna, IC 2602/3 Bolko 12:36 → Wrocław Główny and IC/MP 67 Kyiv Express 07:44 → Warszawa Zachodnia. Not
+checked against PKP Intercity's own pages. With `lublin`, `torun` and `poland` loaded, `plan_trip` with `to_city`:
+- Lublin, Plac Litewski → Toruń, Dom Mikołaja Kopernika, depart 2026-11-18 05:30: 06:04 → 11:07 (303 min, 2 changes):
+  bus 6 06:12–06:19; IC 2520/1 Kopernik 06:27 Lublin Główny (pl. 1, tr. 52) → 10:49 Toruń Główny (pl. 2, tr. 1); bus 27 10:58–11:02.
+- Toruń, Dom Mikołaja Kopernika → Lublin, Plac Litewski, depart 2026-11-18 12:00: 12:59 → 18:01 (302 min, 2 changes):
+  bus 12 13:05–13:10; IC 5222/3 Rejewski 13:19 Toruń Główny (pl. 1, tr. 2) → 17:34 Lublin Główny (pl. 1, tr. 52); bus 74 17:43–17:53.
+
 ### Zakopane: transcription of the city's PDF timetables
 
 **Two independent passes.** Two readers transcribed all 16 pages (lines 10–18) without seeing each
@@ -380,7 +415,7 @@ Checked on 2026-11-16. Design and measurements: [INTERCITY.md](INTERCITY.md).
 
 **FlixBus time conversion.**
 - Checked against the raw feed: Warszawa Chopin Airport → Białystok leaves 13:05 UTC on summer dates and 14:05 UTC on winter dates. Both are 15:05 in Poland, and the import stores them as one run.
-- Synthetic tests check +1 h in winter, +2 h in summer, a run reaching Poland after midnight UTC, and that stops abroad are dropped.
+- Synthetic tests check +1 h in winter, +2 h in summer, a run reaching Poland after midnight UTC, that a coach serving Poland keeps its stops abroad on Polish time, that a stop on another clock is dropped, and that a coach that never reaches Poland is dropped.
 
 **Example trips.**
 

@@ -1,4 +1,5 @@
-"""Per-city configuration. Adding a city = adding an entry here (and building its data file)."""
+"""Per-city configuration of the built-in Polish data sets. Adding a city = adding an entry here (and building its
+data file). Other data sets come from a definitions file instead (datasets.py, `build --datasets FILE`)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,8 +19,11 @@ class Feed:
     credits: tuple[tuple[str, str, str], ...] = ()
     # made locally (e.g. transcribed from PDFs by a script) instead of downloaded; read from raw/<city>/<key>/
     local: str | None = None
-    # keep only stops with this stop_timezone, and the parts of trips between them (a European feed cut to Poland)
+    # keep only trips that call at a stop with this stop_timezone, whole as far as their stops keep Polish time
+    # (D29: e.g. a Praha - Wrocław coach whole; a stop on another clock, e.g. Vilnius, is dropped)
     stop_timezone: str | None = None
+    # stop names matching this regular expression are waypoints, not stops for passengers: they are left out
+    not_stops: str | None = None
     # the feed's times are in UTC (its agency_timezone); they are converted to Polish time per date at import
     utc_times: bool = False
     # store each trip's train name/number and category, and its platform and track at every stop (rail feeds)
@@ -30,6 +34,11 @@ class Feed:
     operator_names: tuple[tuple[str, str], ...] = ()
     # shapes are simplified to this many metres (coarser for lines drawn across the country)
     shape_tolerance_m: float = 4
+    # stop names may carry the platform as a trailing two-digit number ("Oliwa PKP 02"): build/gtfs.py
+    # platform_splitter decides per feed (all of them when nearly every name has one, otherwise only zero-padded
+    # numbers or ones shared by 3+ stops of a name, never after "nr"). Off for a feed whose names end in numbers
+    # that belong to the name ("Dworcowa Street 22 and 17")
+    platform_in_name: bool = True
 
 
 @dataclass(frozen=True)
@@ -45,6 +54,9 @@ class CityConfig:
     national: bool = False
     # said in every trip to or from this city that uses the national layer
     intercity_notes: tuple[str, ...] = field(default=())
+    # the time zone of the feeds' times; the server reads every file on Polish time, so another zone is accepted
+    # only where its clock agrees with Europe/Warsaw (timeutil.same_clock), e.g. Europe/Prague
+    timezone: str = "Europe/Warsaw"
 
 
 OSM_ATTRIBUTION = "© OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)"
@@ -76,7 +88,7 @@ CITIES: dict[str, CityConfig] = {
             url="https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/"
                 "30e783e4-2bec-4a7d-bb22-ee3e3b26ca96/download/gtfsgoogle.zip",
             licence="CC BY (Otwarte dane ZTM w Gdańsku)",
-            attribution="Zarząd Transportu Miejskiego w Gdańsku, http://www.ztm.gda.pl/otwarty_ztm",
+            attribution="Zarząd Transportu Miejskiego w Gdańsku, https://www.ztm.gda.pl/otwarty_ztm",
         ),),
         live="ztm-gdansk",
         notes=("Gdynia (ZKM Gdynia) and SKM trains are not in the ZTM Gdańsk feed and are not covered.",),
@@ -152,6 +164,20 @@ CITIES: dict[str, CityConfig] = {
         ),),
         notes=("ZTM GZM is the transport authority; the feed does not name the operating companies.",),
     ),
+    "lublin": CityConfig(
+        id="lublin",
+        name="Lublin (ZDiTM network: bus, trolleybus)",
+        osm_region="lubelskie",
+        bbox=(51.08, 22.345, 51.405, 22.785),  # the extent of the network's stops, about 35 x 30 km
+        feeds=(Feed(
+            key="L",
+            name="Lublin GTFS (ZDiTM Lublin, converted by mkuran.pl)",
+            url="https://mkuran.pl/gtfs/lublin.zip",
+            licence="CC0 1.0",
+            attribution="Zarząd Dróg i Transportu Miejskiego w Lublinie (ZDiTM), https://www.zdtm.lublin.eu",
+            credits=(_MKURAN,),
+        ),),
+    ),
     "zakopane": CityConfig(
         id="zakopane",
         name="Zakopane (map and walking only)",
@@ -212,7 +238,7 @@ CITIES: dict[str, CityConfig] = {
             ),
             Feed(
                 key="FX",
-                name="FlixBus Europe GTFS (Polish stops only)",
+                name="FlixBus Europe GTFS (trips serving Poland)",
                 # the Mobility Database's mirror of the dataset on transport.data.gouv.fr (France's access point)
                 url="https://files.mobilitydatabase.org/tdg-11681/latest.zip",
                 licence="ODbL 1.0",
@@ -220,9 +246,13 @@ CITIES: dict[str, CityConfig] = {
                             "https://transport.data.gouv.fr/datasets/flixbus-horaires-theoriques-du-reseau-europeen-1",
                 credits=(("feed mirror", "Mobility Database", "https://mobilitydatabase.org"),),
                 stop_timezone="Europe/Warsaw",
+                # "Heidelberg Pre Waypoint", "Puttgarden (Ferry) Waypoint", "C4T All4Trucks (Pre UK Check)"
+                not_stops=r"(?i)\bway-?point\b|\bpre uk check\)",
                 utc_times=True,
                 shapes=False,
                 operator_names=(("FlixBus-eu", "FlixBus"), ("FlixTrain-eu", "FlixTrain")),
+                # names end in stand or house numbers ("Chelm, Armii Krajowej Street/KFC 05 and 06"); keep them whole
+                platform_in_name=False,
             ),
         ),
         notes=("Fares are not included. Coaches other than FlixBus (e.g. the private Kraków–Zakopane buses, "

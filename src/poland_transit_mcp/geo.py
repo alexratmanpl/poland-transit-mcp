@@ -128,3 +128,57 @@ def ring_area(r: list[LatLon]) -> float:
         a += (r[j][1] - r[i][1]) * (r[j][0] + r[i][0])
         j = i
     return abs(a / 2) * k
+
+
+def _touches(p: LatLon, q: LatLon, box) -> bool:
+    """Whether the segment p-q touches the box (a, b, c, d) (Liang-Barsky): also when both ends are outside it."""
+    a, b, c, d = box
+    t0, t1 = 0.0, 1.0
+    for dp, lo, hi, p0 in ((q[0] - p[0], a, c, p[0]), (q[1] - p[1], b, d, p[1])):
+        if dp == 0:
+            if not lo <= p0 <= hi:
+                return False
+            continue
+        ta, tb = (lo - p0) / dp, (hi - p0) / dp
+        t0, t1 = max(t0, min(ta, tb)), min(t1, max(ta, tb))
+        if t0 > t1:
+            return False
+    return True
+
+
+def clip_line(points: list[LatLon], box) -> list[list[LatLon]]:
+    """The runs of a line that touch the box (a, b, c, d): every segment that crosses it, so each run reaches the
+    edge with its first point beyond it."""
+    runs, cur = [], []
+    for p, q in zip(points, points[1:]):
+        if _touches(p, q, box):
+            if not cur:
+                cur = [p]
+            cur.append(q)
+        elif cur:
+            runs.append(cur)
+            cur = []
+    if cur:
+        runs.append(cur)
+    return runs
+
+
+def clip_ring(ring: list[LatLon], box) -> list[LatLon]:
+    """A polygon ring cut to the box (Sutherland-Hodgman); empty when nothing of it is inside."""
+    a, b, c, d = box
+    edges = ((0, a, True), (0, c, False), (1, b, True), (1, d, False))  # (axis, value, keep values above it)
+    out = list(ring)
+    for axis, v, above in edges:
+        if not out:
+            break
+        src, out = out, []
+        for i, cur in enumerate(src):
+            prev = src[i - 1]
+            cin = cur[axis] >= v if above else cur[axis] <= v
+            pin = prev[axis] >= v if above else prev[axis] <= v
+            if cin != pin:
+                t = (v - prev[axis]) / (cur[axis] - prev[axis])
+                out.append((prev[0] + (cur[0] - prev[0]) * t, prev[1] + (cur[1] - prev[1]) * t))
+            if cin:
+                out.append(cur)
+    return out

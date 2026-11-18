@@ -26,9 +26,13 @@ def legs(it, mode=None):
     return [leg for leg in it["legs"] if mode is None or leg["mode"] == mode]
 
 
-def test_coach_times_in_utc_become_polish_time_and_stops_abroad_are_dropped(three):
+def test_coach_times_in_utc_become_polish_time_and_trips_serving_poland_stay_whole(three):
     _, _, nat = three
-    assert not resolve_stops(nat, "Ausland")
+    # D29: a coach that serves Poland keeps its stops abroad on Polish time (Ausland, Berlin), not those on
+    # another clock (Wilno, Vilnius); a coach that never reaches Poland is dropped with its stops (Drezno)
+    assert not resolve_stops(nat, "Wilno") and not resolve_stops(nat, "Drezno")
+    abroad = scheduled_departures(nat, resolve_stops(nat, "Ausland"), LocalTime(20261110, 0), limit=5)
+    assert [(d["time"], d["direction"]) for d in abroad] == [("06:00", "Beta Dworzec Autobusowy"), ("21:00", "Beta Dworzec Autobusowy")]
     stop = resolve_stops(nat, "Alfa Dworzec Autobusowy")
     winter = scheduled_departures(nat, stop, LocalTime(20261110, 0), limit=5)
     summer = scheduled_departures(nat, stop, LocalTime(20260701, 0), limit=5)
@@ -134,7 +138,7 @@ def test_to_city_without_the_national_layer_says_how_to_add_it(three):
     alfa, beta, _ = three
     server = create_server(CityPool({"alfa": alfa, "beta": beta}, 1000))
     text, err = call(server, "plan_trip", {"city": "alfa", "from": START, "to_city": "beta", "to": END})
-    assert err and "add poland to --cities" in text
+    assert err and "national layer" in text and "--cities" in text and "poland" in text
 
 
 def test_a_date_only_some_feeds_cover_is_said(three):
@@ -147,6 +151,6 @@ def test_a_date_only_some_feeds_cover_is_said(three):
         assert "covers 2026-01-01..2026-11-30, not 2026-12-10" in nat.partial_note(20261210)
         assert nat.partial_note(20261110) is None
         r = plan_intercity(alfa, beta, nat, START, END, depart_at="2026-12-10 07:30")
-        assert any("not 2026-12-10" in n for n in r["notes"])
+        assert "not 2026-12-10" in r["note"]
     finally:
         nat.feeds = _json.loads(nat.db.execute("SELECT value FROM meta WHERE key = 'feeds'").fetchone()[0])

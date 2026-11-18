@@ -19,18 +19,22 @@ classifiers = [
   "Topic :: Scientific/Engineering :: GIS",
 ]
 dependencies = [
-  "mcp>=2.3,<3",
+  "certifi>=2024.2.2",  # one trust store for every download (net.py)
+  "mcp>=2.3,<2.4",  # server.py swaps SDK internals (_strict_arguments): widen only after its guard tests pass on the newer SDK
   "numpy>=1.26",
   "opentelemetry-api>=1.30",  # no-op unless the `otel` extra is installed and configured (telemetry.py)
+  "resvg>=0.2,<0.3",  # render_map's PNG (MIT; prebuilt wheels, no dependencies); without it the map comes as SVG
   "scipy>=1.11",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "opentelemetry-sdk>=1.30"]
+dev = ["pytest>=8", "opentelemetry-sdk>=1.30", "pillow>=10.3", "hypothesis>=6.100", "hypothesis-jsonschema>=0.23"]  # pillow: the small-png path is tested too
 # send traces and metrics to an OpenTelemetry collector (docs/OBSERVABILITY.md)
 otel = ["opentelemetry-sdk>=1.30", "opentelemetry-exporter-otlp-proto-http>=1.30"]
 # the optional Rust search engine (engine/); without it the built-in Python search is used
 fast = ["poland-transit-mcp-engine>=0.2,<0.3"]
+# render_map's PNG with a 256-colour palette: about 70% fewer bytes (Pillow, MIT-CMU); without it, the PNG as drawn
+small-png = ["pillow>=10.3"]
 
 [project.urls]
 Homepage = "https://github.com/alexratmanpl/poland-transit-mcp"

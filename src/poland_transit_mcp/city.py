@@ -2,16 +2,18 @@
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 import sqlite3
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import numpy as np
 
+from .errors import Refused
 from . import telemetry
 from .config import CITIES, CityConfig
 from .timetable import Stop, Timetable
-from .timeutil import fmt_date
+from .timeutil import fmt_date, same_clock
 from .walk import GraphArrays, WalkGraph
 
 
@@ -27,6 +29,21 @@ class City:
         self.osm: dict = json.loads(meta["osm"])
         self.feeds: list[dict] = json.loads(meta["feeds"])
         self.built_at: str = meta.get("built_at", "")
+        # written by the build from the data set's definition; files built before that fall back to config.py
+        self.timezone: str = meta.get("timezone", "Europe/Warsaw")
+        self.notes: tuple[str, ...] = (tuple(json.loads(meta["notes"])) if "notes" in meta
+                                       else self.cfg.notes if self.cfg else ())
+        self.intercity_notes: tuple[str, ...] = (tuple(json.loads(meta["intercity_notes"])) if "intercity_notes" in meta
+                                                 else self.cfg.intercity_notes if self.cfg else ())
+        ok = [f for f in self.feeds if f.get("status") == "ok" and f.get("start_date") and f.get("end_date")]
+        if self.timezone != "Europe/Warsaw":
+            today = date.today()
+            lo, hi = ((min(f["start_date"] for f in ok), max(f["end_date"] for f in ok)) if ok else
+                      (int(today.strftime("%Y%m%d")), int((today + timedelta(days=400)).strftime("%Y%m%d"))))
+            if not same_clock(self.timezone, lo, hi):
+                self.db.close()
+                raise Refused(f'"{self.id}" keeps its times in {self.timezone}, whose clock differs from Polish time '
+                                 f"between {fmt_date(lo)} and {fmt_date(hi)}; the server reads every file on Polish time")
         # the national layer (trains and coaches between cities): timetables only, no map or walking graph
         self.national: bool = meta.get("kind") == "national"
         self.gateways: dict = {}  # intercity.py: this layer's stations inside each city, per city id
@@ -46,7 +63,7 @@ class City:
     def graph(self) -> WalkGraph:
         if self._graph is None:
             if self.national:
-                raise ValueError(f'"{self.id}" is the national layer of trains and coaches: it has stations and '
+                raise Refused(f'"{self.id}" is the national layer of trains and coaches: it has stations and '
                                  "timetables but no map. Use departures or line_info on it, or plan_trip with "
                                  "city and to_city for a trip between cities")
             with telemetry.city_load(self.id, "graph") as s:
@@ -116,34 +133,36 @@ class City:
         return "; ".join(f'{f["name"]} covers {fmt_date(f["start_date"])}..{fmt_date(f["end_date"])}, not {fmt_date(date)}: '
                          "its trips are not shown" for f in out)
 
-    def provenance(self, parts: tuple[str, ...]) -> dict:
-        source: list[str] = []
-        as_of: dict[str, str] = {}
+    @staticmethod
+    def feed_dates(f: dict) -> dict:
+        """A feed's dates: published (ISO, from an explicit publication note, else the server's Last-Modified, else
+        the newest file date in the zip), retrieved, valid_from and valid_to. None where unknown."""
+        published = f.get("published") or f.get("last_modified")
+        if published:
+            try:
+                published = parsedate_to_datetime(published).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (TypeError, ValueError):
+                pass
+        if not published and f.get("files_dated"):
+            published = f'{f["files_dated"]} local (file dates in the zip)'
+        return {"published": published, "retrieved": f.get("downloaded_at"),
+                "valid_from": fmt_date(f["start_date"]) if f.get("start_date") else None,
+                "valid_to": fmt_date(f["end_date"]) if f.get("end_date") else None}
+
+    def provenance(self, parts: tuple[str, ...], full: bool = False) -> dict:
+        """The credit ids (credits.py has their text) and data dates of the parts of this file an answer used: each
+        source's publication date (YYYY-MM-DD), or with `full` the OSM timestamp and each feed's feed_dates."""
+        ids: list[str] = []
+        as_of: dict[str, str | dict] = {}
         if "osm" in parts and self.osm.get("attribution"):
-            source.append(self.osm["attribution"])
-            as_of["osm"] = self.osm["timestamp"]
+            ids.append("osm")
+            as_of["osm"] = self.osm["timestamp"] if full else self.osm["timestamp"][:10]
         if "gtfs" in parts:
-            if self.has_transit:
-                # some publishers (e.g. ZTM Poznań) require saying that their data was processed
-                source.append("Timetables processed by poland-transit-mcp (feeds merged, shapes simplified); "
-                              "check the operator for changes")
             for f in self.feeds:
-                if f["status"] != "ok":
-                    source.append(f'{f["name"]}: not available ({f["status"]})')
+                if f["status"] != "ok":  # no data from it in the answer; list_cities shows its status
                     continue
-                credits = "".join(f'; {c["role"]}: {c["name"]}' + (f' <{c["url"]}>' if c.get("url") else "")
-                                  for c in f.get("credits", ()))
-                source.append(f'{f["name"]} — {f["attribution"]} ({f["licence"]}){credits}')
-                # an explicit publication note (e.g. a PDF's date), else the server's Last-Modified
-                published = f.get("published") or f.get("last_modified")
-                if published:
-                    try:
-                        published = parsedate_to_datetime(published).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except (TypeError, ValueError):
-                        pass
-                if not published and f.get("files_dated"):
-                    published = f'{f["files_dated"]} local (file dates in the zip)'
-                as_of[f'gtfs_{f["key"]}'] = (f'published {published or "unknown"}, '
-                                             f'retrieved {f.get("downloaded_at") or "unknown"}, '
-                                             f'valid {fmt_date(f["start_date"])}..{fmt_date(f["end_date"])}')
-        return {"source": source, "as_of": as_of}
+                ids.append(f'{self.id}/{f["key"]}')
+                dates = self.feed_dates(f)
+                as_of[f'gtfs_{f["key"]}'] = ({k: v for k, v in dates.items() if v} if full else
+                                             (dates["published"] or "unknown")[:10])
+        return {"credits": ids, "as_of": as_of}

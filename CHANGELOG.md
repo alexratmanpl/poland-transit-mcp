@@ -2,6 +2,54 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- **Answers carry credit ids, not credit text:** `source` (the full credits, repeated in every answer) is replaced by `credits`, a list of ids (`osm`, `<city>/<feed key>`, `<city>/live`). The full text comes from the new `credits` tool, the `credits://all` resource, or `poland-transit-mcp credits`. A feed that is not available shows in `as_of`.
+- Unknown arguments are refused with an error that names them (they were ignored: `departures` with `date` answered for now).
+- `line_info` leaves out line geometry unless `detail: "full"` and keeps the 10 directions with the most trips.
+- `render_map` draws a trip longer than 18 km from its start, with an arrow to its end, instead of failing; the PNG now follows the text block and is at most 2,576 px on its longest side.
+- `walk_route` gives `from`/`to` as `{name, at}` also when no route is found, and its path only with `detail: "full"`.
+- Trip references read like a URL query (`t2?c=…`), half the tokens of the base64 form, and trips between cities have one too.
+- `render_map`: `size` (the longer side) replaces `width`; a PNG stays within 4,784 patches of 28 px; a bbox outside the city, unknown `style` keys and values that are not colours are refused.
+- `map_extract`: shapes are cut at the box and detail is reduced until the layers fit `max_points` (default 1,000, about 20,000 characters); a layer that still does not fit is left out whole and named.
+- `list_cities`: each feed names its `credit` id instead of its licence and credit text; `in_memory` and `search_engine` are gone.
+- Tools have titles; argument errors are one line; `null` means "not given" for every argument.
+
+### Fixed
+- Two cities with a feed of the same key (e.g. Kraków's and Toruń's `T`) reported one data date for both; such keys are now per city (`gtfs_<city>_<key>`).
+
+### Added
+- Smaller answers for agents: `plan_trip` and `plan_stations` leave out line geometry unless `detail: "full"` (Praha → Kraków on `plan_stations`: about 1,050 tokens instead of 5,750); each itinerary in one city carries a short `trip` reference; `render_map` takes it (`trip`) and returns a PNG image by default (a trip map: about 1,060 image tokens and 235 text tokens instead of about 32,000 tokens of SVG text). `output: "svg"` keeps the SVG. PNG rendering uses `resvg` (MIT), now a dependency.
+- Every tool declares the shape of its answer (`outputSchema`) and returns it as `structuredContent`, with the same compact JSON as text as before. Clients that generate code from tool definitions (for example Cloudflare's Code Mode) get typed results.
+- `--host ADDR` (or `POLAND_TRANSIT_HOST`) for `--http`: bind another address than `127.0.0.1`, e.g. `0.0.0.0` in a container. There is still no authentication; the server warns at start when it is not on loopback.
+- FlixBus trips that serve Poland are kept whole as far as their stops keep Polish time (Czechia, Germany, Austria, …), so Praha → Wrocław and Brno → Wrocław coaches appear as one leg. Stops on another clock are still dropped. The feed's name is now "FlixBus Europe GTFS (trips serving Poland)", which changes its credit text.
+- Data sets from a definitions file: `build ID --datasets FILE` (or `POLAND_TRANSIT_DATASETS`) builds a data set that is not in `config.py`, for example another country's trains as a second national layer. The file states its time zone; the build refuses one whose clock differs from Polish time (e.g. `Europe/Prague` is accepted), and the server refuses such a file. Name, time zone, notes and credits are written into the data file, so the server needs no definitions file.
+- National layers are found by their kind, not by the id `poland`. `plan_trip` (with `to_city`) and `plan_stations` take `layer` to choose one when several are loaded; `list_cities` shows each layer's time zone.
+- `plan_stations`: trains and coaches of the national layer between stations, from several start stops to several end stops, each with its own minutes (from `depart_at` until the traveller is ready to board there; from arriving there until the trip is over). It adds no walk or city transport, and each option names the stops and minutes it used. For a caller that brings the traveller to a station itself, for example from another country's timetable.
+- Build safeguards: a rebuild keeps the current city file when a feed that was `ok` there is now missing, broken or
+  skipped, or stores less than half its runs (the new file is kept as `<city>.sqlite.rejected`, exit code 3; the new
+  `--force` replaces it anyway). After writing, it names feeds that are not `ok` or end within 14 days, and repeats
+  failed downloads. The `city-data` workflow starts from the published file, so a worse build is never uploaded. Each
+  feed's record in the city file now holds its number of stored runs (`runs`).
+- Lublin: ZDiTM Lublin buses and trolleybuses, from the GTFS conversion at mkuran.pl (CC0 1.0), with the `lubelskie` map. In the `city-data` workflow's build matrix.
+
+### Fixed
+- A plan's `depart_at`/`arrive_by` after midnight reads as one date and time (`2026-11-19 01:10`, was `2026-11-18 2026-11-19 01:10`).
+- Error messages keep their own leading quote (`"Alfa" matches several stops`, was `Alfa" matches…`).
+- Stop names with a house or school number lost it as a "platform" ("Bierutowska 65" in Wrocław, "Gołonóg Szkoła
+  Podstawowa nr 11" in GZM). A trailing two-digit number is now a platform only in a feed whose names nearly all end
+  in one (ZTM Gdańsk), or when it is zero-padded or shared by three or more stops of the same name ("GALERIA
+  DOMINIKAŃSKA 10"), and never after "nr".
+- Gdańsk's credit gives the publisher's address over https (`https://www.ztm.gda.pl/otwarty_ztm`; its terms print the
+  same address with http).
+- Downloads failed with `CERTIFICATE_VERIFY_FAILED` on some publishers' servers (Wrocław's and Poznań's open-data
+  portals) with Python builds whose default trust store lacks their root (for example uv's standalone Python on macOS).
+  Every download now trusts the system's roots plus Mozilla's root list from `certifi` (a new dependency); nothing is
+  removed, so a root added to the system (a company proxy) keeps working. When a missing root is the likely cause, the
+  build and `download` say how to fix it; an expired or wrong-host certificate is reported as rejected.
+- FlixBus stop names keep their trailing numbers ("Kostrzyn nad Odra, Dworcowa Street 22 and 17" was stored as "… 22 and" with platform 17). The split of a trailing platform number off a stop name is now a per-feed setting (`platform_in_name`), on by default and off for FlixBus.
+
 ## 0.2.0 - 2026-11-17
 
 The first public release.

@@ -8,7 +8,9 @@ import re
 import sqlite3
 import zipfile
 from contextlib import contextmanager
-from datetime import date as _date, datetime as _datetime, timedelta as _timedelta
+from datetime import date as _date
+from datetime import datetime as _datetime
+from datetime import timedelta as _timedelta
 from pathlib import Path
 from typing import Callable, Iterator
 from zoneinfo import ZoneInfo
@@ -18,12 +20,12 @@ import numpy as np
 from ..config import Feed
 from ..geo import RAD, R, encode_parts, simplify
 from ..text import fold
-from ..timeutil import parse_gtfs_time
+from ..timeutil import parse_gtfs_time, same_clock
 from ..walk import WALK_SPEED_MPS, WalkGraph
 
 Log = Callable[..., None]
 DAY = 86400
-WARSAW = ZoneInfo("Europe/Warsaw")
+WARSAW = ZoneInfo("Europe/Warsaw")  # every data set keeps Polish time (build_city.clock_problems checks it)
 
 
 def mode_of(route_type: int) -> str:
@@ -66,6 +68,35 @@ class Source:
 
 _ATTRIBUTION_ROLES = (("is_producer", "GTFS producer"), ("is_operator", "operator"),
                       ("is_authority", "authority"), ("is_data_source", "data source"))
+
+
+TRAILING_NUMBER = re.compile(r"^(.*\S)\s+(\d{2})$")
+ALL_NUMBERED = 0.9  # a feed whose stop names nearly all end in a two-digit post number (ZTM Gdańsk)
+
+
+def platform_splitter(names: list[str]):
+    """How a feed's names carry platforms: name -> re.Match (name, platform) or None.
+
+    In a feed whose names nearly all end in a two-digit number ("Oliwa PKP 02", "Pokładowa 91"), that number is the
+    platform. Elsewhere a trailing number is only a platform when it is zero-padded ("PL. JANA PAWŁA II 01") or when
+    three or more stops share the name with different numbers ("GALERIA DOMINIKAŃSKA 10"); otherwise it belongs to the
+    name, as a house number ("Bierutowska 65", "Opatowicka nr 59") or a school number ("Szkoła Podstawowa nr 11")."""
+    tails = [m for m in map(TRAILING_NUMBER.match, names) if m]
+    if names and len(tails) / len(names) >= ALL_NUMBERED:
+        return TRAILING_NUMBER.match
+    variants: dict[str, set[str]] = {}
+    for m in tails:
+        variants.setdefault(m[1], set()).add(m[2])
+
+    # decided per name, so all numbers of one name split together ("X 01" and "X 12"), or none of them
+    platform_names = {base for base, nums in variants.items()
+                      if not re.search(r"\bnr\.?$", base, re.IGNORECASE)
+                      and (any(n.startswith("0") for n in nums) or len(nums) >= 3)}
+
+    def split(name: str):
+        m = TRAILING_NUMBER.match(name)
+        return m if m and m[1] in platform_names else None
+    return split
 
 
 def feed_credits(feed: Feed, src: Source) -> list[dict[str, str]]:
@@ -120,21 +151,45 @@ def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGra
             return meta
     P = feed.key + ":"
     meta["credits"] = feed_credits(feed, src)
-    stated_start = 0
+    stated_start = stated_end = 0
     with src.rows("feed_info.txt") as rows:
         for r in rows:
             meta["feed_version"] = r.get("feed_version") or r.get("feed_end_date") or ""
             stated_start = int(r.get("feed_start_date") or 0)
+            stated_end = int(r.get("feed_end_date") or 0)
+
+    # With feed.stop_timezone, a feed is cut to the trips that serve that zone (D29: whole trips of services that
+    # touch Poland). They keep every stop whose clock agrees with Polish time over the feed's dates (e.g. Praha,
+    # Berlin); a stop on another clock (e.g. Vilnius) is dropped, and the trip keeps its parts on Polish time.
+    today = _date.today()
+    clock_lo = stated_start or int(today.strftime("%Y%m%d"))
+    clock_hi = stated_end or int((today + _timedelta(days=400)).strftime("%Y%m%d"))
+    clocks: dict[str, bool] = {}
+    not_stops = re.compile(feed.not_stops) if feed.not_stops else None
+
+    def on_polish_clock(zone: str) -> bool:
+        if zone not in clocks:
+            clocks[zone] = bool(zone) and same_clock(zone, clock_lo, clock_hi)
+        return clocks[zone]
+    home: set[int] = set()  # stops in feed.stop_timezone itself
 
     # stops
+    split_platform = None
+    if feed.platform_in_name:
+        with src.rows("stops.txt") as rows:
+            split_platform = platform_splitter([r.get("stop_name", "") for r in rows
+                                                if r.get("location_type") in (None, "", "0")])
     stop_idx: dict[str, int] = {}
     si = _next(db, "stop_idx", "stops")
     with src.rows("stops.txt") as rows:
         for r in rows:
             if r.get("location_type") not in (None, "", "0"):
                 continue
-            if feed.stop_timezone and r.get("stop_timezone") != feed.stop_timezone:
-                continue  # outside the area this feed is cut to; trips keep only their stops inside it
+            if not_stops and not_stops.search(r.get("stop_name", "")):
+                continue  # a waypoint, not a stop for passengers: the trip passes it
+            zone = r.get("stop_timezone") or ""
+            if feed.stop_timezone and zone != feed.stop_timezone and not on_polish_clock(zone):
+                continue  # on another clock: trips keep only their stops on Polish time
             try:
                 lat, lon = float(r["stop_lat"]), float(r["stop_lon"])
             except (KeyError, ValueError):
@@ -142,7 +197,7 @@ def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGra
             if lat == 0 and lon == 0:
                 continue
             name, platform = r["stop_name"], r.get("platform_code") or r.get("stop_desc") or ""
-            m = re.match(r"^(.*\S)\s+(\d{2})$", name)
+            m = split_platform(name) if split_platform else None
             if m and not platform:  # "Oliwa PKP 02" → name + platform
                 name, platform = m[1], m[2]
             if not re.fullmatch(r"\w{0,4}", platform):
@@ -154,6 +209,8 @@ def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGra
                         snap.node if snap else None, round(snap.dist) if snap else None))
             db.execute("INSERT INTO stops_rtree(id, min_lat, max_lat, min_lon, max_lon) VALUES (?,?,?,?,?)", (si, lat, lat, lon, lon))
             stop_idx[r["stop_id"]] = si
+            if zone == feed.stop_timezone:
+                home.add(si)
             si += 1
 
     # agencies: route -> operator name (GTFS agency_name; some feeds name the transport authority instead)
@@ -286,41 +343,53 @@ def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGra
     # A trip whose kept part starts after 24:00 (e.g. a coach from abroad that reaches Poland the next day)
     # or whose times are in UTC runs under derived services: its dates moved by whole days, and split by
     # Poland's UTC offset on each date (+1 h in winter, +2 h in summer). The offset is taken at noon, so
-    # runs in the hour of a clock change can be off by an hour on those two nights a year.
-    derived: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    # runs in the hour of a clock change can be off by an hour on those two nights a year. A trip that starts abroad
+    # the evening before takes the offset of the day it reaches Poland (`odays`), not of the day it starts.
+    derived: dict[tuple[int, int, int], list[tuple[int, int]]] = {}
 
-    def variants(service: int, days: int) -> list[tuple[int, int]]:
-        if (service, days) not in derived:
+    def variants(service: int, days: int, odays: int) -> list[tuple[int, int]]:
+        if (service, days, odays) not in derived:
             groups: dict[int, set[int]] = {}
             for d in _dates_of(db, service):
-                day = _date(d // 10000, d // 100 % 100, d % 100) + _timedelta(days=days)
-                off = int(WARSAW.utcoffset(_datetime(day.year, day.month, day.day, 12)).total_seconds()) if feed.utc_times else 0
+                d0 = _date(d // 10000, d // 100 % 100, d % 100)
+                day, oday = d0 + _timedelta(days=days), d0 + _timedelta(days=odays)
+                off = int(WARSAW.utcoffset(_datetime(oday.year, oday.month, oday.day, 12)).total_seconds()) if feed.utc_times else 0
                 groups.setdefault(off, set()).add(day.year * 10000 + day.month * 100 + day.day)
             out = []
             for off, dates in sorted(groups.items()):
                 sid = _next(db, "service_idx", "calendar")
                 db.execute("INSERT INTO calendar(service_idx, feed, service_id, days, start_date, end_date) VALUES (?,?,?,0,0,0)",
-                           (sid, feed.key, f"{P}derived-{service}{days:+d}d{off:+d}s"))
+                           (sid, feed.key, f"{P}derived-{service}{days:+d}d{odays:+d}o{off:+d}s"))
                 db.executemany("INSERT INTO calendar_dates(service_idx, date, exception_type) VALUES (?,?,1)",
                                ((sid, d) for d in sorted(dates)))
                 out.append((off, sid))
-            derived[(service, days)] = out
-        return derived[(service, days)]
+            derived[(service, days, odays)] = out
+        return derived[(service, days, odays)]
 
     for a, b in zip(starts.tolist(), ends.tolist()):
         if b - a < 2:
             continue
         idx = order[a:b]
+        if feed.stop_timezone and not home.intersection(c_stop[idx].tolist()):
+            continue  # a trip that does not serve the zone (e.g. Paris - Lyon)
         route, service, head, direction, shape, tid = trips[int(c_trip[idx[0]])]
-        stops = c_stop[idx].astype("<i4")
-        fl = c_fl[idx].astype(np.uint8)
-        fl[0] |= 2  # no drop-off at the first stop
-        fl[-1] |= 1  # no pickup at the last stop
         arr, dep = c_arr[idx].copy(), c_dep[idx].copy()
         missing = dep < 0
         if missing.any():  # interpolate non-timepoints linearly by position
             known = np.flatnonzero(~missing)
             dep[missing] = arr[missing] = np.round(np.interp(np.flatnonzero(missing), known, dep[known])).astype(np.int64)
+        if feed.stop_timezone and int(arr[-1]) - int(dep[0]) // DAY * DAY >= 2 * DAY - 2 * 3600:
+            # a day's timetable reaches back one day only, so a run must end within 48 h of its day's midnight
+            # (2 h kept for the UTC offset): leave out its first stops abroad until it does
+            cut = (int(arr[-1]) - 2 * DAY + 2 * 3600) // DAY + 1
+            keep = dep >= cut * DAY
+            idx, arr, dep = idx[keep], arr[keep], dep[keep]
+            if len(idx) < 2 or not home.intersection(c_stop[idx].tolist()):
+                continue
+        stops = c_stop[idx].astype("<i4")
+        fl = c_fl[idx].astype(np.uint8)
+        fl[0] |= 2  # no drop-off at the first stop
+        fl[-1] |= 1  # no pickup at the last stop
         key = (route, head, direction, shape, stops.tobytes(), fl.tobytes())
         p = pattern_key.get(key)
         if p is None:
@@ -337,7 +406,9 @@ def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGra
             info = (train, category, "|".join(c_where[i] for i in idx.tolist()))
         if tid not in freq and (feed.utc_times or (feed.stop_timezone and dep[0] >= DAY)):
             days = int(dep[0]) // DAY
-            for off, sv in variants(service, days):
+            first_home = next((k for k, s_ in enumerate(stops.tolist()) if s_ in home), 0) if feed.stop_timezone else 0
+            odays = int(dep[first_home]) // DAY if feed.stop_timezone else days
+            for off, sv in variants(service, days, odays):
                 add_run(p, tid, times - days * DAY + off, int(dep[0]) - days * DAY + off, sv, 0, info)
         elif tid in freq:
             # expand to one run per headway; times are only approximate unless exact_times = 1
@@ -369,6 +440,7 @@ def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGra
     meta["start_date"] = max(meta["start_date"], stated_start)
     meta["end_date"] = max(v for v in (lo[1], cd[1], 0) if v)
     meta["status"] = "ok"
+    meta["runs"] = len(runs)  # compared with the last good file before it is replaced (build/safeguard.py)
     log(f"GTFS {feed.key}: {len(pattern_key)} patterns, valid {meta['start_date']}..{meta['end_date']}")
     return meta
 

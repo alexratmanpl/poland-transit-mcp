@@ -1,8 +1,9 @@
 """Command line.
 
-  poland-transit-mcp [--cities gdansk,krakow|all] [--memory-budget MB] [--data-dir DIR] [--http PORT] [--live gdansk] [--no-download]
+  poland-transit-mcp [--cities gdansk,krakow|all] [--memory-budget MB] [--data-dir DIR] [--http PORT [--host ADDR]] [--live gdansk] [--no-download]
   poland-transit-mcp download gdansk,krakow [--data-dir DIR] [--from URL]
-  poland-transit-mcp build gdansk [--download] [--skip-gtfs] [--data-dir DIR]
+  poland-transit-mcp build gdansk [--download] [--skip-gtfs] [--force] [--data-dir DIR]
+  poland-transit-mcp credits [--cities gdansk,poland] [--data-dir DIR] > credits.json
 """
 from __future__ import annotations
 
@@ -12,13 +13,16 @@ import os
 import sys
 import threading
 import time
-import urllib.request
 from pathlib import Path
 
-from . import memory  # noqa: F401  (sets how large freed allocations go back to the OS, before any are made)
+from . import (
+    memory,  # noqa: F401  (sets how large freed allocations go back to the OS, before any are made)
+    net,
+)
 from .city import City
 from .config import CITIES
 
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
 DEFAULT_DATA_URL = "https://github.com/alexratmanpl/poland-transit-mcp/releases/download/data-latest"
 
 
@@ -45,7 +49,7 @@ def download(ids: list[str], directory: Path, base: str | None = None) -> None:
         url = f"{base}/{cid}.sqlite.gz"
         log(f"downloading {url}")
         part = directory / f"{cid}.sqlite.part"
-        with urllib.request.urlopen(url, timeout=120) as r:  # noqa: S310
+        with net.urlopen(url, timeout=120) as r:
             directory.mkdir(parents=True, exist_ok=True)  # only once the server has answered: a failed fetch leaves nothing behind
             with gzip.GzipFile(fileobj=r) as gz, open(part, "wb") as out:
                 while chunk := gz.read(1 << 20):
@@ -61,10 +65,15 @@ def serve(argv: list[str]) -> None:
         epilog="subcommands:\n"
                "  build CITY [--download]     build ./data/cities/CITY.sqlite from OSM and GTFS (see build --help);\n"
                "                              outside a clone, then start with --data-dir ./data/cities\n"
-               "  download CITY[,CITY...]     fetch prebuilt city files (not published yet: use build)")
+               "  download CITY[,CITY...]     fetch prebuilt city files (not published yet: use build)\n"
+               "  credits [--cities ...]      print the full credits of the city files as JSON")
     ap.add_argument("--cities", default=os.environ.get("POLAND_TRANSIT_CITIES"), help="comma-separated city ids (default: all files present)")
     ap.add_argument("--data-dir", help="where <city>.sqlite files live")
-    ap.add_argument("--http", type=int, metavar="PORT", help="serve Streamable HTTP on 127.0.0.1:PORT/mcp instead of stdio")
+    ap.add_argument("--http", type=int, metavar="PORT", help="serve Streamable HTTP on HOST:PORT/mcp instead of stdio")
+    ap.add_argument("--host", default=None,
+                    help="address --http binds to (default $POLAND_TRANSIT_HOST, else 127.0.0.1). There is no "
+                         "authentication: bind another address, e.g. 0.0.0.0 in a container, only on a network that "
+                         "nothing untrusted can reach")
     ap.add_argument("--live", default=os.environ.get("POLAND_TRANSIT_LIVE", ""), help="opt in to live departures, e.g. gdansk")
     ap.add_argument("--no-download", action="store_true", help="never fetch missing city files")
     ap.add_argument("--memory-budget", type=float, metavar="MB",
@@ -75,10 +84,13 @@ def serve(argv: list[str]) -> None:
                          "and least recently used cities are unloaded to keep within the rest (they reload on "
                          "their next query)")
     a = ap.parse_args(argv)
+    if a.host and not a.http:  # the variable alone may be set in an image that is also run over stdio
+        ap.error("--host needs --http")
+    a.host = (a.host or os.environ.get("POLAND_TRANSIT_HOST") or "127.0.0.1").strip("[]")
     t0 = time.perf_counter()
     directory = data_dir(a.data_dir)
-    if a.cities == "all":
-        wanted = sorted(CITIES)
+    if a.cities == "all":  # every built-in data set, and every file present (e.g. built from a definitions file)
+        wanted = sorted(set(CITIES) | ({p.stem for p in directory.glob("*.sqlite")} if directory.is_dir() else set()))
     elif a.cities:
         wanted = [c.strip() for c in a.cities.split(",") if c.strip()]
     else:
@@ -88,12 +100,12 @@ def serve(argv: list[str]) -> None:
         try:
             download(missing, directory)
         except Exception as e:  # noqa: BLE001 - report and carry on with what we have
-            log(f"could not download {', '.join(missing)}: {e}")
+            log(f"could not download {', '.join(missing)}: {e}{net.tls_note(e)}")
     cities: dict[str, City] = {}
     for cid in wanted:
         try:
             cities[cid] = City.open(directory, cid)
-        except FileNotFoundError as e:
+        except (FileNotFoundError, ValueError) as e:
             log(f"skipping {cid}: {e}")
     if not cities:
         log(f"no city data found in {directory}. Build it: poland-transit-mcp build gdansk --download, then start "
@@ -112,13 +124,20 @@ def serve(argv: list[str]) -> None:
     if keep_all > a.memory_budget:
         log(f"memory: these cities need about {keep_all} MB to stay loaded together; with {a.memory_budget:g} MB the "
             f"least recently used is unloaded and reloads on its next query (1-4 s). To keep them all: --memory-budget {keep_all}")
+    from .server import picture_warning
+    if picture_warning():
+        log(f"WARNING: {picture_warning()}")
     log(f"ready: {', '.join(cities)} from {directory} in {round((time.perf_counter() - t0) * 1000)} ms "
         f"(memory budget {a.memory_budget:g} MB, search engine: {engine.NAME})")
     if not os.environ.get("POLAND_TRANSIT_NO_WARMUP"):
         threading.Thread(target=pool.warm, args=(list(cities), now_local().date), daemon=True).start()
     if a.http:
-        log(f"Streamable HTTP on http://127.0.0.1:{a.http}/mcp")
-        server.run("streamable-http", host="127.0.0.1", port=a.http, stateless_http=True, json_response=True)
+        shown = f"[{a.host}]" if ":" in a.host else a.host
+        log(f"Streamable HTTP on http://{shown}:{a.http}/mcp")
+        if a.host not in LOOPBACK:
+            log(f"WARNING: bound to {a.host}, not loopback, and there is no authentication: anyone who can reach this "
+                "address can call the tools. The MCP SDK's DNS-rebinding check is off for non-loopback addresses")
+        server.run("streamable-http", host=a.host, port=a.http, stateless_http=True, json_response=True)
     else:
         server.run()
 
@@ -134,11 +153,26 @@ def main(argv: list[str] | None = None) -> None:
         try:
             download([c for c in a.cities.split(",") if c], data_dir(a.data_dir), a.base)
         except Exception as e:  # noqa: BLE001 - one readable line instead of a traceback (an unpublished release answers 404)
-            log(f"could not download {a.cities}: {e}")
+            log(f"could not download {a.cities}: {e}{net.tls_note(e)}")
             sys.exit(1)
     elif argv and argv[0] == "build":
         from .build.build_city import main as build_main
         build_main(argv[1:])
+    elif argv and argv[0] == "credits":  # the full credits of the data files, to publish next to them
+        import json
+
+        from .credits import credit_set
+        ap = argparse.ArgumentParser(prog="poland-transit-mcp credits",
+                                     description="print the full credits of the city files as JSON")
+        ap.add_argument("--cities", help="comma-separated city ids (default: every file in the data dir)")
+        ap.add_argument("--data-dir")
+        a = ap.parse_args(argv[1:])
+        directory = data_dir(a.data_dir)
+        ids = [c for c in (a.cities or "").split(",") if c] or sorted(p.stem for p in directory.glob("*.sqlite"))
+        if not ids:
+            log(f"no city data found in {directory}")
+            sys.exit(1)
+        print(json.dumps(credit_set([City.open(directory, c) for c in ids]), ensure_ascii=False, indent=1))
     else:
         serve(argv)
 

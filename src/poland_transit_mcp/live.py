@@ -4,16 +4,21 @@ the schedule does not contain."""
 from __future__ import annotations
 
 import json
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from . import net
 from .city import City
 from .timetable import Stop
 from .timeutil import fmt_date, fmt_hm, now_local, to_local
 from .transit import scheduled_departures
 
 TIMEOUT_S = 2.5
+# the credit of each live source (config.py names the source per city); answers name it as "<city>/live"
+LIVE_CREDITS = {
+    "ztm-gdansk": "ZTM Gdańsk real-time departures (ckan2.multimediagdansk.pl/departures), "
+                  "Zarząd Transportu Miejskiego w Gdańsku, https://www.ztm.gda.pl/otwarty_ztm",
+}
 _enabled: set[str] = set()
 
 
@@ -27,7 +32,7 @@ def live_enabled(city_id: str) -> bool:
 
 def _fetch_ztm(stop_num: str) -> dict:
     url = f"https://ckan2.multimediagdansk.pl/departures?stopId={stop_num}"
-    with urllib.request.urlopen(url, timeout=TIMEOUT_S) as r:  # noqa: S310 (fixed https host)
+    with net.urlopen(url, timeout=TIMEOUT_S) as r:  # fixed https host
         return json.loads(r.read(2 << 20))  # bounded: a larger reply is not valid JSON and falls back to the schedule
 
 
@@ -75,6 +80,4 @@ def _merge(sched: list[dict], feeds: list, now, limit: int) -> dict:
             d["date"] = None
     return {"ok": True, "status": f"merged: {matched} scheduled departures matched to real-time estimates",
             "departures": deps,
-            "source": "ZTM Gdańsk real-time departures (ckan2.multimediagdansk.pl/departures), "
-                      "Zarząd Transportu Miejskiego w Gdańsku, http://www.ztm.gda.pl/otwarty_ztm",
             "as_of": max((f.get("lastUpdate", "") for _, f in feeds), default="")}

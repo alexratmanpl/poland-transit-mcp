@@ -5,10 +5,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .errors import Refused
 from .city import City
 from .geo import LatLon, haversine, pt, simplify
 from .places import resolve_point
-from .text import fold
+from .text import fold, quoted
 from .timetable import NO_PICKUP, Stop, headway_fields, route_color
 from .timeutil import LocalTime, fmt_date, fmt_wall, now_local
 from .walk import FLAG_BRIDGE, FLAG_STEPS, WALK_SPEED_MPS
@@ -39,7 +40,7 @@ def walk_to_stops(city: City, at: LatLon, max_secs: float) -> WalkSearch:
     g = city.graph
     snap = g.snap(at[0], at[1], 400)
     if snap is None:
-        raise ValueError(f"point {pt(*at)} is more than 400 m from any mapped walkable way")
+        raise Refused(f"point {pt(*at)} is more than 400 m from any mapped walkable way")
     max_m = max_secs * WALK_SPEED_MPS
     dist, pred = g.search(snap.node, max(0.0, max_m - snap.dist))
     nodes, stops = city.stop_nodes()
@@ -77,7 +78,7 @@ def walk_path(city: City, a: LatLon, b: LatLon, max_m: float = 15000) -> WalkPat
     g = city.graph
     sa, sb = g.snap(a[0], a[1], 400), g.snap(b[0], b[1], 400)
     if sa is None or sb is None:
-        raise ValueError(f'{"start" if sa is None else "end"} point is more than 400 m from any mapped walkable way')
+        raise Refused(f'{"start" if sa is None else "end"} point is more than 400 m from any mapped walkable way')
     r = g.route(sa.node, sb.node, max_m)
     if r is None:
         return None
@@ -92,7 +93,8 @@ def walk_route(city: City, frm, to) -> dict:
     B, b_label, _ = resolve_point(city, to)
     r = walk_path(city, A, B)
     if r is None:
-        return {"from": a_label, "to": b_label, "path": None, "note": "no walking connection found within 15 km"}
+        return {"from": {"name": a_label, "at": pt(*A)}, "to": {"name": b_label, "at": pt(*B)}, "path": None,
+                "note": "no walking connection found within 15 km"}
     bridges = sum(1 for i, f in enumerate(r.flags) if f & FLAG_BRIDGE and not (i > 0 and r.flags[i - 1] & FLAG_BRIDGE))
     notes = []
     if r.snap[0] > 60:
@@ -103,7 +105,8 @@ def walk_route(city: City, frm, to) -> dict:
             "distance_m": round(r.meters), "minutes": round(r.secs / 60),
             "straight_line_m": round(haversine(A[0], A[1], B[0], B[1])),
             "bridges_crossed": bridges, "uses_steps": any(f & FLAG_STEPS for f in r.flags),
-            "path": [pt(*c) for c in simplify(r.coords, 4)], "note": "; ".join(notes) or None}
+            # the drawn length changes by under 1% at length/500 (4 m up to a 2 km walk)
+            "path": [pt(*c) for c in simplify(r.coords, max(4.0, r.meters / 500))], "note": "; ".join(notes) or None}
 
 
 def resolve_stops(city: City, ref: str) -> list[Stop]:
@@ -120,7 +123,7 @@ def resolve_stops(city: City, ref: str) -> list[Stop]:
     found = found or [s for s in tt.stops if s and fold(s.name) == n] or [s for s in tt.stops if s and fold(s.name).startswith(n)]
     names = sorted({s.name for s in found})
     if len(names) > 1:
-        raise ValueError(f'"{ref}" matches several stops: {", ".join(names[:8])}; pass a stop_id')
+        raise Refused(f'{quoted(ref)} matches several stops: {", ".join(names[:8])}; pass one of these names')
     return found
 
 
@@ -203,7 +206,7 @@ def line_info(city: City, line: str, date: int) -> dict:
     routes = [r for r in tt.routes.values() if fold(r.short) == want]
     if not routes:
         similar = [r.short for r in tt.routes.values() if fold(r.short).startswith(want[:1])][:15]
-        raise ValueError(f'no line "{line}" in {city.id} timetable' + (f"; similar: {', '.join(similar)}" if similar else ""))
+        raise Refused(f'no line {quoted(line)} in {city.id} timetable' + (f"; similar: {', '.join(similar)}" if similar else ""))
     ids = {r.idx for r in routes}
     day = tt.day(date)
     groups: dict = {}
@@ -235,7 +238,8 @@ def line_info(city: City, line: str, date: int) -> dict:
             "direction": head, "trips": len(ts), "variants": len(by_pat),
             "first_departure": clock(deps[0]), "last_departure": clock(deps[-1]), "frequency": freq,
             "stops": [{"stop_id": tt.stops[s].id, "name": tt.stops[s].name} for s in main.stops],
-            "path": [pt(*c) for c in simplify(tt.leg_path(main, 0, len(main.stops) - 1), 15)],
+            # a national line runs hundreds of km: its overview is drawn coarser (TLK was 112,000 characters at 15 m)
+            "path": [pt(*c) for c in simplify(tt.leg_path(main, 0, len(main.stops) - 1), 150 if city.national else 15)],
         })
     r = routes[0]
     operators = sorted({x.agency for x in routes if x.agency})

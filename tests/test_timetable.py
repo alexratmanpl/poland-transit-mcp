@@ -99,7 +99,8 @@ def test_operator_is_reported(city):
     r = plan_trip(city, at(2, 1), at(2, 12), depart_at="2026-11-10 07:58", max_transfers=0)
     leg = next(l for i in r["itineraries"] for l in i["legs"] if l["mode"] != "walk")
     assert leg["operator"] == "Testowo Transit"
-    assert any("processed by poland-transit-mcp" in s for s in city.provenance(("gtfs",))["source"])
+    from poland_transit_mcp.credits import credit_set
+    assert "processed by poland-transit-mcp" in credit_set([city])["notice"]
 
 
 def test_publication_date_falls_back_to_zip_file_dates(tmp_path):
@@ -142,7 +143,9 @@ def test_identical_trips_of_several_services_are_stored_once(city):
 
 
 def test_converter_is_credited_with_a_link(city):
-    src = " ".join(city.provenance(("gtfs",))["source"])
+    from poland_transit_mcp.credits import credit_set
+    ids = city.provenance(("gtfs",))["credits"]
+    src = " ".join(e["text"] for e in credit_set([city], ids)["credits"])
     assert "GTFS provided by: Test Converter <https://example.invalid/converter>" in src
 
 

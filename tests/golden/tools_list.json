@@ -1,0 +1,1742 @@
+[
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "The full credit and licence of each data source, by the ids answers carry in `credits` (answers hold only\nthe ids). Show the text of each id, and the notice, wherever the data is shown to people. The same set is\nthe resource credits://all.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "ids": {
+     "description": "ids from an answer's `credits`, e.g. [\"osm\"] (default: every source)",
+     "items": {
+      "maxLength": 80,
+      "type": "string"
+     },
+     "maxItems": 50,
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "name": "credits",
+  "outputSchema": {
+   "$defs": {
+    "CreditEntry": {
+     "properties": {
+      "city": {
+       "type": "string"
+      },
+      "id": {
+       "type": "string"
+      },
+      "licence": {
+       "type": "string"
+      },
+      "text": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "text"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "about": {
+     "type": "string"
+    },
+    "credits": {
+     "items": {
+      "$ref": "#/$defs/CreditEntry"
+     },
+     "type": "array"
+    },
+    "note": {
+     "type": "string"
+    },
+    "notice": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "credits",
+    "notice",
+    "about"
+   ],
+   "type": "object"
+  },
+  "title": "Data credits"
+ },
+ {
+  "annotations": {
+   "openWorldHint": true,
+   "readOnlyHint": true
+  },
+  "description": "Next scheduled departures from one stop: line, direction, time and operator, with live estimates where the\ncity offers them and the server has them on (flagged \"live\"). `at` picks another time or day. On a national\nlayer such as \"poland\" pass a station name: each departure also gives the train (number or name), category,\nplatform and track.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "at": {
+     "description": "local time, HH:MM or YYYY-MM-DD HH:MM (default now)",
+     "maxLength": 40,
+     "minLength": 1,
+     "type": "string"
+    },
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "detail": {
+     "default": "summary",
+     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "enum": [
+      "summary",
+      "full"
+     ],
+     "type": "string"
+    },
+    "limit": {
+     "default": 10,
+     "maximum": 50,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "line": {
+     "description": "only this line, e.g. \"8\"",
+     "maxLength": 60,
+     "type": "string"
+    },
+    "stop_id": {
+     "description": "a stop name (all its platforms) or one stop_id from find_places/stops_near",
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "city",
+    "stop_id"
+   ],
+   "type": "object"
+  },
+  "name": "departures",
+  "outputSchema": {
+   "$defs": {
+    "Departure": {
+     "properties": {
+      "category": {
+       "type": "string"
+      },
+      "color": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      },
+      "date": {
+       "type": "string"
+      },
+      "direction": {
+       "type": "string"
+      },
+      "line": {
+       "type": "string"
+      },
+      "mode": {
+       "type": "string"
+      },
+      "operator": {
+       "type": "string"
+      },
+      "platform": {
+       "type": "string"
+      },
+      "status": {
+       "type": "string"
+      },
+      "stop_id": {
+       "type": "string"
+      },
+      "time": {
+       "type": "string"
+      },
+      "track": {
+       "type": "string"
+      },
+      "train": {
+       "type": "string"
+      },
+      "trip_id": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      }
+     },
+     "required": [
+      "time",
+      "line",
+      "direction"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "at": {
+     "type": "string"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "departures": {
+     "items": {
+      "$ref": "#/$defs/Departure"
+     },
+     "type": "array"
+    },
+    "live": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "stop": {
+     "additionalProperties": true,
+     "type": "object"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "departures"
+   ],
+   "type": "object"
+  },
+  "title": "Departures from a stop"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Find named places in one city by name and/or near a point: attractions, museums, parks, stations, stops,\nhotels, landmarks, streets. Names match with or without Polish diacritics. Returns name, kind and [lat, lon];\nstops also carry `stop_ids` for departures. Only this server's data: no street addresses. On a national layer\n(e.g. \"poland\") it finds stations by name.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "kinds": {
+     "description": "only these kinds, e.g. [\"stop\", \"station\"]",
+     "items": {
+      "enum": [
+       "attraction",
+       "museum",
+       "park",
+       "station",
+       "stop",
+       "hotel",
+       "landmark",
+       "street"
+      ],
+      "type": "string"
+     },
+     "maxItems": 8,
+     "type": "array"
+    },
+    "limit": {
+     "default": 10,
+     "maximum": 50,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "near": {
+     "description": "[lat, lon]",
+     "items": {
+      "maximum": 180,
+      "minimum": -180,
+      "type": "number"
+     },
+     "maxItems": 2,
+     "minItems": 2,
+     "type": "array"
+    },
+    "query": {
+     "description": "a name or part of one",
+     "maxLength": 200,
+     "type": "string"
+    },
+    "radius_m": {
+     "description": "metres around `near` (default 1000 without a query)",
+     "exclusiveMinimum": 0,
+     "maximum": 50000,
+     "type": "number"
+    }
+   },
+   "required": [
+    "city"
+   ],
+   "type": "object"
+  },
+  "name": "find_places",
+  "outputSchema": {
+   "$defs": {
+    "Place": {
+     "properties": {
+      "at": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "kind": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "stop_ids": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     "required": [
+      "name",
+      "kind",
+      "at"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "note": {
+     "type": "string"
+    },
+    "places": {
+     "items": {
+      "$ref": "#/$defs/Place"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "places"
+   ],
+   "type": "object"
+  },
+  "title": "Find places"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "One line on one date: its directions with stops in order, first and last departure and how often it runs\nthrough the day (at most the 10 busiest directions). On a national layer such as \"poland\", pass a train number\nor name (e.g. \"3120/1\" or \"Karłowicz\") for that train's stops with times, platforms and tracks.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "date": {
+     "description": "YYYY-MM-DD (default today)",
+     "maxLength": 10,
+     "minLength": 1,
+     "type": "string"
+    },
+    "detail": {
+     "default": "summary",
+     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "enum": [
+      "summary",
+      "full"
+     ],
+     "type": "string"
+    },
+    "line": {
+     "description": "line number or name, e.g. \"8\"; on a national layer also a train number or name",
+     "maxLength": 60,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "city",
+    "line"
+   ],
+   "type": "object"
+  },
+  "name": "line_info",
+  "outputSchema": {
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "color": {
+     "description": "only with detail=\"full\"",
+     "type": "string"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "date": {
+     "type": "string"
+    },
+    "directions": {
+     "description": "a city line: stop names, first and last run, frequency; detail=\"full\": stops as {stop_id, name}, and `path`",
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "line": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "runs": {
+     "description": "a train's stops with times; `trip_id`, `path` only with detail=\"full\"",
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "train": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of"
+   ],
+   "type": "object"
+  },
+  "title": "Line or train"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Cities and national layers this server has loaded: the `city` ids all other tools take, each with its\narea (bbox), what it supports (places, walking, timetables, trip planning, maps, live departures) and the\ndates its timetable covers. Call it first; a date outside `timetable.valid` gives no departures or trips.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {},
+   "type": "object"
+  },
+  "name": "list_cities",
+  "outputSchema": {
+   "$defs": {
+    "CityEntry": {
+     "properties": {
+      "bbox": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "city": {
+       "type": "string"
+      },
+      "features": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "kind": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "timetable": {
+       "additionalProperties": true,
+       "type": "object"
+      }
+     },
+     "required": [
+      "city",
+      "name",
+      "features"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "cities": {
+     "items": {
+      "$ref": "#/$defs/CityEntry"
+     },
+     "type": "array"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "note": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "cities"
+   ],
+   "type": "object"
+  },
+  "title": "List cities"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Simplified map geometry for drawing your own map of a bounding box in one city (at most about 18 km\nacross): lines and polygons cut at the box, grouped by layer, as [lat, lon] points. Detail is reduced until\nthe layers fit `max_points`; a layer that still does not fit is left out and named in the note. For a\nfinished picture use render_map.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "bbox": {
+     "description": "[minLat, minLon, maxLat, maxLon]",
+     "items": {
+      "maximum": 180,
+      "minimum": -180,
+      "type": "number"
+     },
+     "maxItems": 4,
+     "minItems": 4,
+     "type": "array"
+    },
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "layers": {
+     "description": "default: all but paths",
+     "items": {
+      "enum": [
+       "water",
+       "parks",
+       "streets_major",
+       "streets_minor",
+       "paths",
+       "rail",
+       "tram",
+       "stops"
+      ],
+      "type": "string"
+     },
+     "maxItems": 8,
+     "type": "array"
+    },
+    "max_points": {
+     "default": 1000,
+     "description": "the most points to return (default 1000, about 20,000 characters)",
+     "maximum": 4000,
+     "minimum": 100,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "city",
+    "bbox"
+   ],
+   "type": "object"
+  },
+  "name": "map_extract",
+  "outputSchema": {
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "bbox": {
+     "items": {
+      "type": "number"
+     },
+     "type": "array"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "layers": {
+     "additionalProperties": true,
+     "description": "per layer: lines as [[lat, lon], ...]; polygons as lists of rings (outer parts and holes), filled even-odd; stops as {id, name, at}",
+     "type": "object"
+    },
+    "note": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "bbox",
+    "layers"
+   ],
+   "type": "object"
+  },
+  "title": "Map data"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Trains and coaches between stations of a national layer (e.g. \"poland\"), with no walk or city transport\nadded. Use it when the traveller starts or ends at a station, for stations outside the listed cities (also\nabroad), or when you plan the way to the station yourself; for a door-to-door trip use plan_trip. `from` and\n`to` are lists of stops, each with the minutes the traveller needs there before boarding (from `depart_at`) or\nafter arriving, e.g. [{\"stop\": \"Kraków Główny\", \"minutes\": 15}]. Each option's depart and arrive include those\nminutes, and it names the stops it used. Up to 3 options. FlixBus stops have their own names (e.g. \"Wroclaw,\nBus Station\"): find them with find_places on the layer.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "arrive_by": {
+     "description": "arrive by this time instead (same format); not with depart_at",
+     "maxLength": 40,
+     "minLength": 1,
+     "type": "string"
+    },
+    "depart_at": {
+     "description": "local time, HH:MM or YYYY-MM-DD HH:MM (default now)",
+     "maxLength": 40,
+     "minLength": 1,
+     "type": "string"
+    },
+    "detail": {
+     "default": "summary",
+     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "enum": [
+      "summary",
+      "full"
+     ],
+     "type": "string"
+    },
+    "from": {
+     "description": "start stops, each with the minutes needed before boarding there",
+     "items": {
+      "additionalProperties": false,
+      "properties": {
+       "minutes": {
+        "default": 0,
+        "maximum": 1440,
+        "minimum": 0,
+        "type": "integer"
+       },
+       "stop": {
+        "description": "a station or stop name (all its platforms), or a stop_id",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "stop"
+      ],
+      "type": "object"
+     },
+     "maxItems": 20,
+     "minItems": 1,
+     "type": "array"
+    },
+    "layer": {
+     "description": "the national layer to use, if several are loaded",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "max_transfers": {
+     "default": 2,
+     "maximum": 4,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "to": {
+     "description": "end stops, each with the minutes needed after arriving there",
+     "items": {
+      "additionalProperties": false,
+      "properties": {
+       "minutes": {
+        "default": 0,
+        "maximum": 1440,
+        "minimum": 0,
+        "type": "integer"
+       },
+       "stop": {
+        "description": "a station or stop name (all its platforms), or a stop_id",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "stop"
+      ],
+      "type": "object"
+     },
+     "maxItems": 20,
+     "minItems": 1,
+     "type": "array"
+    }
+   },
+   "required": [
+    "from",
+    "to"
+   ],
+   "type": "object"
+  },
+  "name": "plan_stations",
+  "outputSchema": {
+   "$defs": {
+    "Leg": {
+     "properties": {
+      "arrive": {
+       "type": "string"
+      },
+      "category": {
+       "description": "left out when it repeats line, unless detail=\"full\"",
+       "type": "string"
+      },
+      "color": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      },
+      "depart": {
+       "type": "string"
+      },
+      "direction": {
+       "type": "string"
+      },
+      "distance_m": {
+       "type": "integer"
+      },
+      "from": {
+       "$ref": "#/$defs/LegEnd"
+      },
+      "line": {
+       "type": "string"
+      },
+      "minutes": {
+       "type": "integer"
+      },
+      "mode": {
+       "type": "string"
+      },
+      "operator": {
+       "type": "string"
+      },
+      "path": {
+       "description": "only with detail=\"full\"",
+       "items": {
+        "items": {
+         "type": "number"
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "status": {
+       "description": "\"scheduled\" only with detail=\"full\"; frequency-based: estimated",
+       "type": "string"
+      },
+      "stops": {
+       "type": "integer"
+      },
+      "to": {
+       "$ref": "#/$defs/LegEnd"
+      },
+      "train": {
+       "type": "string"
+      },
+      "trip_id": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      }
+     },
+     "required": [
+      "from",
+      "to",
+      "mode"
+     ],
+     "type": "object"
+    },
+    "LegEnd": {
+     "properties": {
+      "at": {
+       "description": "only with detail=\"full\"",
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "city": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "platform": {
+       "type": "string"
+      },
+      "stop_id": {
+       "type": "string"
+      },
+      "track": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "name"
+     ],
+     "type": "object"
+    },
+    "StationItinerary": {
+     "properties": {
+      "arrive": {
+       "type": "string"
+      },
+      "depart": {
+       "type": "string"
+      },
+      "duration_min": {
+       "type": "integer"
+      },
+      "end": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "legs": {
+       "items": {
+        "$ref": "#/$defs/Leg"
+       },
+       "type": "array"
+      },
+      "start": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "transfers": {
+       "type": "integer"
+      },
+      "trip": {
+       "type": "string"
+      },
+      "walk_m": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "depart",
+      "arrive",
+      "duration_min",
+      "transfers",
+      "legs",
+      "start",
+      "end"
+     ],
+     "type": "object"
+    },
+    "StationTimeAnswer": {
+     "properties": {
+      "minutes": {
+       "type": "integer"
+      },
+      "stop": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "stop",
+      "minutes"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "arrive_by": {
+     "type": "string"
+    },
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "depart_at": {
+     "type": "string"
+    },
+    "from": {
+     "items": {
+      "$ref": "#/$defs/StationTimeAnswer"
+     },
+     "type": "array"
+    },
+    "itineraries": {
+     "items": {
+      "$ref": "#/$defs/StationItinerary"
+     },
+     "type": "array"
+    },
+    "note": {
+     "type": "string"
+    },
+    "to": {
+     "items": {
+      "$ref": "#/$defs/StationTimeAnswer"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "from",
+    "to",
+    "itineraries"
+   ],
+   "type": "object"
+  },
+  "title": "Plan between stations"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Door-to-door trip by public transport on the scheduled timetable: walk, ride (with changes), walk. Up to 3\noptions, each with its legs: times, line, direction, stops, operator. `from` and `to` are points or place names\nin `city`. Leave now (default), at `depart_at`, or arrive by `arrive_by`. Between two listed cities, set\n`to_city` (the city `to` is in): the plan adds trains or FlixBus coaches of the national layer (train,\nplatform, track) and city transport at both ends. For stations in cities that are not listed, or when you\nhandle the way to the station yourself, use plan_stations. Each option has a `trip` reference that render_map\ncan draw (a trip between cities: its part in `city`); it stays valid while the timetable data is the same.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "arrive_by": {
+     "description": "arrive by this time instead (same format); not with depart_at",
+     "maxLength": 40,
+     "minLength": 1,
+     "type": "string"
+    },
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "depart_at": {
+     "description": "local time, HH:MM or YYYY-MM-DD HH:MM (default now)",
+     "maxLength": 40,
+     "minLength": 1,
+     "type": "string"
+    },
+    "detail": {
+     "default": "summary",
+     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "enum": [
+      "summary",
+      "full"
+     ],
+     "type": "string"
+    },
+    "from": {
+     "anyOf": [
+      {
+       "items": {
+        "maximum": 180,
+        "minimum": -180,
+        "type": "number"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      }
+     ],
+     "description": "[lat, lon] or a place name in `city`"
+    },
+    "layer": {
+     "description": "the national layer to use, if several are loaded",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "max_transfers": {
+     "default": 2,
+     "maximum": 4,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "items": {
+        "maximum": 180,
+        "minimum": -180,
+        "type": "number"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      }
+     ],
+     "description": "[lat, lon] or a place name in `city`"
+    },
+    "to_city": {
+     "description": "city id of `to`, for a trip between two cities (needs a national layer)",
+     "maxLength": 40,
+     "type": "string"
+    }
+   },
+   "required": [
+    "city",
+    "from",
+    "to"
+   ],
+   "type": "object"
+  },
+  "name": "plan_trip",
+  "outputSchema": {
+   "$defs": {
+    "Itinerary": {
+     "properties": {
+      "arrive": {
+       "type": "string"
+      },
+      "depart": {
+       "type": "string"
+      },
+      "duration_min": {
+       "type": "integer"
+      },
+      "legs": {
+       "items": {
+        "$ref": "#/$defs/Leg"
+       },
+       "type": "array"
+      },
+      "transfers": {
+       "type": "integer"
+      },
+      "trip": {
+       "type": "string"
+      },
+      "walk_m": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "depart",
+      "arrive",
+      "duration_min",
+      "transfers",
+      "legs"
+     ],
+     "type": "object"
+    },
+    "Leg": {
+     "properties": {
+      "arrive": {
+       "type": "string"
+      },
+      "category": {
+       "description": "left out when it repeats line, unless detail=\"full\"",
+       "type": "string"
+      },
+      "color": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      },
+      "depart": {
+       "type": "string"
+      },
+      "direction": {
+       "type": "string"
+      },
+      "distance_m": {
+       "type": "integer"
+      },
+      "from": {
+       "$ref": "#/$defs/LegEnd"
+      },
+      "line": {
+       "type": "string"
+      },
+      "minutes": {
+       "type": "integer"
+      },
+      "mode": {
+       "type": "string"
+      },
+      "operator": {
+       "type": "string"
+      },
+      "path": {
+       "description": "only with detail=\"full\"",
+       "items": {
+        "items": {
+         "type": "number"
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "status": {
+       "description": "\"scheduled\" only with detail=\"full\"; frequency-based: estimated",
+       "type": "string"
+      },
+      "stops": {
+       "type": "integer"
+      },
+      "to": {
+       "$ref": "#/$defs/LegEnd"
+      },
+      "train": {
+       "type": "string"
+      },
+      "trip_id": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      }
+     },
+     "required": [
+      "from",
+      "to",
+      "mode"
+     ],
+     "type": "object"
+    },
+    "LegEnd": {
+     "properties": {
+      "at": {
+       "description": "only with detail=\"full\"",
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "city": {
+       "description": "only with detail=\"full\"",
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "platform": {
+       "type": "string"
+      },
+      "stop_id": {
+       "type": "string"
+      },
+      "track": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "name"
+     ],
+     "type": "object"
+    },
+    "Named": {
+     "properties": {
+      "at": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "city": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "platform": {
+       "type": "string"
+      },
+      "stop_id": {
+       "type": "string"
+      },
+      "track": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "name",
+      "at"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "arrive_by": {
+     "type": "string"
+    },
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "assumptions": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "depart_at": {
+     "type": "string"
+    },
+    "from": {
+     "$ref": "#/$defs/Named"
+    },
+    "itineraries": {
+     "items": {
+      "$ref": "#/$defs/Itinerary"
+     },
+     "type": "array"
+    },
+    "note": {
+     "type": "string"
+    },
+    "to": {
+     "$ref": "#/$defs/Named"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "from",
+    "to",
+    "itineraries"
+   ],
+   "type": "object"
+  },
+  "title": "Plan a trip"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "A picture of an area and/or a trip in one city (at most about 18 km across): map layers, the trip's walks\ndotted, its rides in line colours with the line number, stops as circles. Pass `trip` from a plan_trip option,\na `bbox`, or both. A trip longer than one map is drawn from its start, with an arrow at the edge giving the\ndistance to its end. Returns a PNG image after the JSON; output=\"svg\" returns the SVG source as text instead\n(large). Draw a map only when the user asks for one: the plan's text already holds everything it shows.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "bbox": {
+     "description": "[minLat, minLon, maxLat, maxLon]",
+     "items": {
+      "maximum": 180,
+      "minimum": -180,
+      "type": "number"
+     },
+     "maxItems": 4,
+     "minItems": 4,
+     "type": "array"
+    },
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "itinerary": {
+     "description": "rather pass `trip`; else a whole option of a plan made with detail=\"full\"",
+     "properties": {
+      "legs": {
+       "items": {
+        "properties": {
+         "color": {
+          "maxLength": 20,
+          "type": "string"
+         },
+         "from": {
+          "properties": {
+           "at": {
+            "items": {
+             "maximum": 180,
+             "minimum": -180,
+             "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+           },
+           "name": {
+            "maxLength": 200,
+            "type": "string"
+           }
+          },
+          "type": "object"
+         },
+         "line": {
+          "maxLength": 60,
+          "type": "string"
+         },
+         "mode": {
+          "maxLength": 20,
+          "type": "string"
+         },
+         "path": {
+          "items": {
+           "items": {
+            "maximum": 180,
+            "minimum": -180,
+            "type": "number"
+           },
+           "maxItems": 2,
+           "minItems": 2,
+           "type": "array"
+          },
+          "maxItems": 5000,
+          "type": "array"
+         },
+         "to": {
+          "properties": {
+           "at": {
+            "items": {
+             "maximum": 180,
+             "minimum": -180,
+             "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+           },
+           "name": {
+            "maxLength": 200,
+            "type": "string"
+           }
+          },
+          "type": "object"
+         }
+        },
+        "type": "object"
+       },
+       "maxItems": 30,
+       "minItems": 1,
+       "type": "array"
+      }
+     },
+     "required": [
+      "legs"
+     ],
+     "type": "object"
+    },
+    "output": {
+     "default": "png",
+     "description": "svg returns the source as text (large)",
+     "enum": [
+      "png",
+      "svg"
+     ],
+     "type": "string"
+    },
+    "size": {
+     "description": "the longer side in pixels (default: 784 for an area; a trip map within about 300 image patches)",
+     "maximum": 2000,
+     "minimum": 100,
+     "type": "integer"
+    },
+    "style": {
+     "additionalProperties": {
+      "maxLength": 20,
+      "type": "string"
+     },
+     "description": "colours by layer, e.g. {\"water\": \"#9cc3e6\"}",
+     "maxProperties": 16,
+     "propertyNames": {
+      "maxLength": 20
+     },
+     "type": "object"
+    },
+    "trip": {
+     "description": "the `trip` value of a plan_trip option",
+     "maxLength": 2000,
+     "type": "string"
+    }
+   },
+   "required": [
+    "city"
+   ],
+   "type": "object"
+  },
+  "name": "render_map",
+  "outputSchema": {
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "format": {
+     "type": "string"
+    },
+    "height": {
+     "type": "integer"
+    },
+    "image": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "svg": {
+     "type": "string"
+    },
+    "width": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "format"
+   ],
+   "type": "object"
+  },
+  "title": "Draw a map"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Public-transport stops within a walk of a point, nearest first by walking time along mapped paths (not\nstraight line), each with its stop_id and the lines serving it on that date.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "date": {
+     "description": "YYYY-MM-DD (default today)",
+     "maxLength": 10,
+     "minLength": 1,
+     "type": "string"
+    },
+    "max_walk_min": {
+     "default": 10,
+     "exclusiveMinimum": 0,
+     "maximum": 30,
+     "type": "number"
+    },
+    "point": {
+     "anyOf": [
+      {
+       "items": {
+        "maximum": 180,
+        "minimum": -180,
+        "type": "number"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      }
+     ],
+     "description": "[lat, lon] or a place name in `city`"
+    }
+   },
+   "required": [
+    "city",
+    "point"
+   ],
+   "type": "object"
+  },
+  "name": "stops_near",
+  "outputSchema": {
+   "$defs": {
+    "NearStop": {
+     "properties": {
+      "at": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "lines": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "name": {
+       "type": "string"
+      },
+      "stop_id": {
+       "type": "string"
+      },
+      "walk_min": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "stop_id",
+      "name",
+      "at",
+      "walk_min",
+      "lines"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "date": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "point": {
+     "items": {
+      "type": "number"
+     },
+     "type": "array"
+    },
+    "stops": {
+     "items": {
+      "$ref": "#/$defs/NearStop"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "point",
+    "stops"
+   ],
+   "type": "object"
+  },
+  "title": "Stops near a point"
+ },
+ {
+  "annotations": {
+   "openWorldHint": false,
+   "readOnlyHint": true
+  },
+  "description": "Walking route between two points in one city along mapped streets and paths: distance and minutes (at 4.8\nkm/h), with detail=full also the path. It never crosses water except on a mapped bridge.",
+  "inputSchema": {
+   "additionalProperties": false,
+   "properties": {
+    "city": {
+     "description": "city id from list_cities",
+     "maxLength": 40,
+     "type": "string"
+    },
+    "detail": {
+     "default": "summary",
+     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "enum": [
+      "summary",
+      "full"
+     ],
+     "type": "string"
+    },
+    "from": {
+     "anyOf": [
+      {
+       "items": {
+        "maximum": 180,
+        "minimum": -180,
+        "type": "number"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      }
+     ],
+     "description": "[lat, lon] or a place name in `city`"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "items": {
+        "maximum": 180,
+        "minimum": -180,
+        "type": "number"
+       },
+       "maxItems": 2,
+       "minItems": 2,
+       "type": "array"
+      },
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      }
+     ],
+     "description": "[lat, lon] or a place name in `city`"
+    }
+   },
+   "required": [
+    "city",
+    "from",
+    "to"
+   ],
+   "type": "object"
+  },
+  "name": "walk_route",
+  "outputSchema": {
+   "$defs": {
+    "Named": {
+     "properties": {
+      "at": {
+       "items": {
+        "type": "number"
+       },
+       "type": "array"
+      },
+      "city": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "platform": {
+       "type": "string"
+      },
+      "stop_id": {
+       "type": "string"
+      },
+      "track": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "name",
+      "at"
+     ],
+     "type": "object"
+    }
+   },
+   "properties": {
+    "as_of": {
+     "additionalProperties": true,
+     "description": "publication date per source (YYYY-MM-DD or \"unknown\"; gtfs_<key>: credit <city>/<key>); detail=\"full\": {published, retrieved, valid_from, valid_to} per feed",
+     "type": "object"
+    },
+    "credits": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "distance_m": {
+     "type": "integer"
+    },
+    "from": {
+     "$ref": "#/$defs/Named"
+    },
+    "minutes": {
+     "type": "integer"
+    },
+    "note": {
+     "type": "string"
+    },
+    "path": {
+     "items": {
+      "items": {
+       "type": "number"
+      },
+      "type": "array"
+     },
+     "type": "array"
+    },
+    "to": {
+     "$ref": "#/$defs/Named"
+    }
+   },
+   "required": [
+    "credits",
+    "as_of",
+    "from",
+    "to"
+   ],
+   "type": "object"
+  },
+  "title": "Walking route"
+ }
+]

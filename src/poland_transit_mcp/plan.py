@@ -59,14 +59,48 @@ def _to_itin(j: RJourney, backward: bool) -> Itin:
                 legs[0].trip.dep[legs[0].board] - acc_s, legs[-1].trip.arr[legs[-1].alight] + egr_s, len(legs) - 1)
 
 
+def tightened(search, secs: int, backward: bool, rounds: int) -> list[Itin]:
+    """Up to MAX_ITINERARIES distinct options. search(back, t, rounds) → itineraries; its access and egress
+    maps carry each start and end stop's own seconds, so an option's start is its first departure minus
+    that stop's seconds, and its end the last arrival plus that stop's seconds.
+
+    Each option = earliest arrival for a departure window, tightened by a reverse search to the latest
+    departure that still makes that arrival (and vice versa for arrive_by). The next window starts
+    just after (before) it, so options are distinct and none involves needless waiting. The window moves
+    in the traveller's own time (start or end), so a stop with more seconds is not cut off by an option
+    that used another stop."""
+    found: dict[str, Itin] = {}
+    t = secs
+    for _ in range(MAX_ITINERARIES):
+        if len(found) >= MAX_ITINERARIES:
+            break
+        first = search(backward, t, rounds)
+        if not first:
+            break
+        tight = []
+        for it in first:
+            r = [x for x in search(not backward, it.start if backward else it.end, it.transfers + 1)
+                 if (x.end <= it.end if backward else x.start >= it.start)]
+            tight.append(min(r, key=lambda x: x.end) if backward and r else max(r, key=lambda x: x.start) if r else it)
+        for it in tight:
+            found.setdefault(it.key, it)
+        t = min(i.end for i in tight) - 60 if backward else max(i.start for i in tight) + 60
+    return list(found.values())
+
+
+def ranked(lst: list[Itin], backward: bool) -> list[Itin]:
+    """Best first (arrive_by: latest start), without options another one beats on start, end and changes."""
+    lst = sorted(lst, key=(lambda x: (-x.start, x.transfers)) if backward else (lambda x: (x.end, x.transfers)))
+    return [x for x in lst if not any(y is not x and y.start >= x.start and y.end <= x.end and y.transfers <= x.transfers
+                                      and (y.start > x.start or y.end < x.end or y.transfers < x.transfers) for y in lst)]
+
+
 def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str | None = None,
               max_transfers: int = 2) -> dict:
     A, a_label, _ = resolve_point(city, frm)
     B, b_label, _ = resolve_point(city, to)
     backward = bool(arrive_by)
     when = parse_when(arrive_by or depart_at)
-    if when is None:
-        raise ValueError(f'cannot parse time "{arrive_by or depart_at}" (use HH:MM, YYYY-MM-DD HH:MM or ISO 8601)')
     max_transfers = max(0, min(max_transfers if max_transfers is not None else 2, 4))
     date = when.date
     today = fmt_date(date)
@@ -77,7 +111,7 @@ def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str 
 
     o = {"name": a_label, "at": pt(*A)}
     d = {"name": b_label, "at": pt(*B)}
-    head = {"from": o, "to": d, ("arrive_by" if backward else "depart_at"): f"{today} {fmt(when.secs)}"}
+    head = {"from": o, "to": d, ("arrive_by" if backward else "depart_at"): " ".join(fmt_wall(date, when.secs))}
     walk = walk_path(city, A, B, 2 * WALK_ONLY_MAX_M) if _straight(A, B) <= WALK_ONLY_MAX_M else None
     walk_itin = None
     if walk:
@@ -105,30 +139,9 @@ def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str 
                     acc.stops if back else egr.stops, -t if back else t, rounds)
         return [_to_itin(j, back) for j in js]
 
-    # Each option = earliest arrival for a departure window, tightened by a reverse search to the latest
-    # departure that still makes that arrival (and vice versa for arrive_by). The next window starts
-    # just after (before) it, so options are distinct and none involves needless waiting.
-    found: dict[str, Itin] = {}
-    t = when.secs
-    for _ in range(MAX_ITINERARIES):
-        if len(found) >= MAX_ITINERARIES:
-            break
-        first = search(backward, t, max_transfers + 1)
-        if not first:
-            break
-        tight = []
-        for it in first:
-            r = [x for x in search(not backward, it.start if backward else it.end, it.transfers + 1)
-                 if (x.end <= it.end if backward else x.start >= it.start)]
-            tight.append(min(r, key=lambda x: x.end) if backward and r else max(r, key=lambda x: x.start) if r else it)
-        for it in tight:
-            found.setdefault(it.key, it)
-        t = min(i.end for i in tight) - 60 if backward else max(i.start for i in tight) + 60
-    lst = [i for i in found.values() if (when.secs - i.end if backward else i.start - when.secs) <= MAX_WAIT_SECS]
-    lst.sort(key=(lambda x: (-x.start, x.transfers)) if backward else (lambda x: (x.end, x.transfers)))
-    lst = [x for x in lst if not any(y is not x and y.start >= x.start and y.end <= x.end and y.transfers <= x.transfers
-                                     and (y.start > x.start or y.end < x.end or y.transfers < x.transfers) for y in lst)]
-    lst = lst[:MAX_ITINERARIES]
+    lst = [i for i in tightened(search, when.secs, backward, max_transfers + 1)
+           if (when.secs - i.end if backward else i.start - when.secs) <= MAX_WAIT_SECS]
+    lst = ranked(lst, backward)[:MAX_ITINERARIES]
 
     def stop_ref(idx: int) -> dict:
         s = tt.stops[idx]
@@ -169,8 +182,8 @@ def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str 
             legs.append({"mode": pat.route.mode, "line": pat.route.short, "operator": pat.route.agency,
                          "direction": pat.headsign or tt.stops[pat.stops[-1]].name, "color": route_color(pat.route),
                          "from": stop_ref(stops[0]), "to": stop_ref(stops[-1]), "depart": fmt(p.trip.dep[p.board]),
-                         "arrive": fmt(last_arr), "stops": len(stops) - 1, "time": "scheduled", "trip_id": p.trip.trip_id,
-                         **headway_fields(p.trip.headway, "time"),
+                         "arrive": fmt(last_arr), "stops": len(stops) - 1, "status": "scheduled", "trip_id": p.trip.trip_id,
+                         **headway_fields(p.trip.headway, "status"),
                          "path": [pt(*c) for c in simplify(tt.leg_path(pat, p.board, p.alight), 10)]})
         coords, m = search_leg(egr, it.egress, True)
         legs.append(walk_leg(stop_ref(it.egress), d, last_arr, it.egress_secs, coords, m))

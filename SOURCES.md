@@ -1,6 +1,6 @@
 # Sources
 
-Every source used to build the city files, checked on **2026-11-14** (Wrocław on 2026-11-15). Sizes are the downloaded
+Every source used to build the city files, checked on **2026-11-14** (Wrocław on 2026-11-15, Lublin on 2026-11-17). Sizes are the downloaded
 files. Measured with `curl -D` headers and `ls -l`. Licences are as stated by the publisher.
 
 ## Map data: OpenStreetMap
@@ -25,7 +25,7 @@ Quirks:
 |---|---|
 | Dataset | `tristar` on ckan.multimediagdansk.pl ("Otwarte dane ZTM w Gdańsku") |
 | Feed URL | `https://ckan.multimediagdansk.pl/dataset/c24aa637-3619-4dc2-a171-a23eec8f2172/resource/30e783e4-2bec-4a7d-bb22-ee3e3b26ca96/download/gtfsgoogle.zip` |
-| Licence | dataset licence `cc-by`. The "Regulamin korzystania z Otwartych danych ZTM w Gdańsku" (2024-01-08) allows free reuse if you name *Zarząd Transportu Miejskiego w Gdańsku*, give <http://www.ztm.gda.pl/otwarty_ztm>, and state when the data was created and retrieved. |
+| Licence | dataset licence `cc-by`. The "Regulamin korzystania z Otwartych danych ZTM w Gdańsku" (2024-01-08) allows free reuse if you name *Zarząd Transportu Miejskiego w Gdańsku*, give the address of the "Otwarte dane ZTM w Gdańsku" service (the Regulamin prints <http://www.ztm.gda.pl/otwarty_ztm>; the credit uses the same address over https, which redirects to the dataset, checked 2026-11-17), and state when the data was created and retrieved (answers carry both in `as_of`). Re-read 2026-11-17: unchanged. |
 | Size / date | 23,126,169 B, Last-Modified **2026-11-14 01:55 GMT**, retrieved 2026-11-14 |
 | Validity | 2026-11-14 .. 2026-11-28: a rolling window of about 15 days, so **refresh daily** |
 | Live API | `https://ckan2.multimediagdansk.pl/departures?stopId=<id>`: estimated departures per stop, listed in the same dataset and covered by the same Regulamin. Opt-in only (`--live gdansk`). |
@@ -103,6 +103,27 @@ Quirks:
 - No `attributions.txt`. The server credits the city, MZK Toruń and the converter itself.
 - The city plans a new network from 1 March 2027, with new line numbers.
 - Timetable part alone (measured): 5,138 runs, 308 patterns, 1.4 MB.
+
+## Lublin: ZDiTM Lublin via mkuran.pl
+
+| | |
+|---|---|
+| Feed URL | `https://mkuran.pl/gtfs/lublin.zip`, converted by Mikołaj Kuranowski (<https://mkuran.pl/gtfs/>). Also listed in the Mobility Database as `mdb-1013`, pointing at the same file. |
+| Licence | CC0 1.0, stated on <https://mkuran.pl/gtfs/> ("ZTM Lublin … License: CC0 1.0", read 2026-11-17). No credit is required and commercial use is allowed; the server credits the authority and the converter anyway. |
+| Official source | **not found.** The authority, Zarząd Dróg i Transportu Miejskiego w Lublinie (ZDiTM, formerly ZTM Lublin), links no GTFS or open data from <https://www.zdtm.lublin.eu> (`/pl/otwarte-dane` returns 404). The city's open-data portal (otwartedane.lublin.eu) and dane.gov.pl did not respond on 2026-11-17, so they were not checked. |
+| Size / date | 2,103,584 B, Last-Modified 2026-11-06 17:48 GMT, retrieved 2026-11-17; `feed_version` 2026-10-31 (the date the operator's current timetable took effect); service dates 2026-10-31 .. 2027-01-29 |
+| Real-time | none used (the operator's website shows vehicles on a map; no public feed was found) |
+| Map data | the `lubelskie` extract, 139,758,179 B, Geofabrik, replication timestamp 2026-11-16T21:22:36Z |
+| Build | 178 s with downloads (156 s of it downloading), max RSS 3.2 GB; `lublin.sqlite` 23.4 MB: 377,148 walking-graph nodes, 67,677 map features, 4,454 places (measured 2026-11-17) |
+
+Quirks:
+- One agency, "ZDiTM Lublin" (the authority); operators are not named.
+- Bus lines (`route_type` 3) and trolleybus lines 150–162 and 950 (`route_type` 11), shown as mode `trolleybus`.
+- No `calendar.txt`, `shapes.txt` or `feed_info` validity: four services defined by `calendar_dates.txt` only: weekdays (`PN`), Saturdays (`WN`), Sundays and holidays (`SN`) and the Friday and Saturday nights of the night lines N1–N3 (`NN`). Legs are drawn stop to stop.
+- The pole number is in `stop_code` ("Ogród Saski" + `01`), not in the name, and the feed's `stop_id` is the operator's own stop number (`1001`), so stop ids can be looked up on the operator's timetable pages (`https://www.zdtm.lublin.eu/pl/rozklady/<stop_id>/<line>`).
+- 1,316 stops spanning about 35 × 30 km, 75 routes (62 bus, 13 trolleybus), 10,303 trips stored as 9,971 distinct runs in 827 stop patterns.
+- The operator's line list also has lines 200–202, the cemetery lines for All Saints' Day (31 October–2 November).
+  They are not in the feed. On 2026-11-17 the operator's page for line 200 listed times only for those three days.
 
 ## Warszawa: ZTM Warszawa via mkuran.pl
 
@@ -187,7 +208,7 @@ What it holds, and what the build keeps:
 - Checked against Koleje Małopolskie's own feed: see [docs/CHECKS.md](docs/CHECKS.md).
 - The rail timetable changes on 13 December 2026; the feed is rebuilt about weekly.
 
-### FlixBus Europe GTFS (Polish stops only)
+### FlixBus Europe GTFS (trips serving Poland)
 
 | | |
 |---|---|
@@ -198,11 +219,14 @@ What it holds, and what the build keeps:
 
 Quirks, and what the build does:
 - **Times are in UTC.** The agency time zone is UTC. The build adds Poland's offset for each date: +1 h in winter, +2 h in summer. FlixBus plans in local time, so a summer run at 13:05 UTC and a winter run at 14:05 UTC are both 15:05 in Poland, and are stored once. The offset is taken at noon, so a run in the hour of a clock change can be an hour off on those two nights a year.
-- **Europe-wide.** Of 2,082 stops, the 210 with `stop_timezone` Europe/Warsaw are kept, and each trip keeps only its part between them: a Berlin → Szczecin → Gdańsk coach becomes Szczecin → Gdańsk. A trip that reaches Poland after midnight UTC (times like 25:30, up to 41:15 in the feed) moves to the next day.
+- **Europe-wide.** Only trips that call at a stop with `stop_timezone` Europe/Warsaw are kept, and they are kept whole as far as their stops keep Polish time (Czechia, Germany, Austria, Italy and the other Central European zones): a Praha → Wrocław or Berlin → Kraków coach appears whole. A stop on another clock (e.g. Vilnius, Kyiv) is dropped, and the trip keeps its parts on Polish time. Waypoints ("Heidelberg Pre Waypoint", "Puttgarden (Ferry) Waypoint", "(Pre UK Check)") are not stops for passengers and are left out (`not_stops`). A run that starts abroad the evening before takes the UTC offset of the day it reaches Poland, and a run longer than about two days leaves out its first stops abroad, so that it ends within 48 h of its day's midnight. In the 2026-11-17 feed: 473 of 2,082 stops and 550 runs (210 stops before, when only Polish stops were kept). A trip that reaches Poland after midnight UTC (times like 25:30, up to 41:15 in the feed) moves to the next day.
 - 37,938 trips → **508** distinct runs in Poland, 172 lines.
 - `shapes.txt` (151 MB, nearly all outside Poland) is not imported: coach legs are drawn stop to stop.
 - The operator is named "FlixBus-eu" in the feed and "FlixBus" in answers.
 - Stop names are in English without diacritics ("Krakow, MDA Bus Station"). Name matching ignores diacritics.
+- 21 Polish stop names end in a stand or street number ("Kostrzyn nad Odra, Dworcowa Street 22 and 17",
+  "Chelm, Armii Krajowej Street/KFC 05 and 06"). They are kept whole: the rule that splits a trailing platform number
+  off a stop name (made for ZTM Gdańsk's "Oliwa PKP 02") is off for this feed (`platform_in_name=False`).
 
 Not available as open data: the private Kraków–Zakopane coaches and minibuses (Szwagropol, Majer, Trans-Kos...),
 PKS Polonus, Neobus, and all fares.

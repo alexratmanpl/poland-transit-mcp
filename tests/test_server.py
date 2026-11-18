@@ -8,7 +8,7 @@ from mcp import Client, StdioServerParameters
 
 from poland_transit_mcp.server import create_server
 
-TOOLS = {"departures", "find_places", "line_info", "list_cities", "map_extract", "plan_trip", "render_map", "stops_near", "walk_route"}
+TOOLS = {"credits", "departures", "find_places", "line_info", "list_cities", "map_extract", "plan_stations", "plan_trip", "render_map", "stops_near", "walk_route"}
 
 
 @pytest.fixture(scope="module")
@@ -20,7 +20,7 @@ def call(server, name, args):
     async def go():
         async with Client(server) as c:
             r = await c.call_tool(name, args)
-            return r.content[0].text, r.is_error
+            return next(b.text for b in r.content if b.type == "text"), r.is_error
     text, err = anyio.run(go)
     return (text if err else json.loads(text)), err
 
@@ -42,10 +42,11 @@ def test_lists_the_tools(server):
     ("plan_trip", {"city": "testowo", "from": at(2, 1), "to": "Ełcka", "depart_at": "2026-11-10 07:58"}),
     ("map_extract", {"city": "testowo", "bbox": [49.999, 18.999, 50.01, 19.02]}),
 ])
-def test_every_answer_has_source_and_as_of(server, name, args):
+def test_every_answer_has_credits_and_as_of(server, name, args):
     body, err = call(server, name, args)
     assert not err, body
-    assert isinstance(body["source"], list) and isinstance(body["as_of"], dict)
+    assert isinstance(body["credits"], list) and isinstance(body["as_of"], dict)
+    assert all(isinstance(i, str) and len(i) < 40 for i in body["credits"])  # ids, never the full text
 
 
 def test_find_places_without_diacritics(server):
@@ -68,8 +69,9 @@ def test_map_extract_groups_layers(server):
 def test_render_map_svg(server):
     plan, _ = call(server, "plan_trip", {"city": "testowo", "from": at(2, 1), "to": at(18, 12), "depart_at": "2026-11-10 07:58"})
     it = next(i for i in plan["itineraries"] if any(l["mode"] != "walk" for l in i["legs"]))
-    body, err = call(server, "render_map", {"city": "testowo", "itinerary": it, "width": 400})
-    assert not err and body["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg" width="400"')
+    body, err = call(server, "render_map", {"city": "testowo", "trip": it["trip"], "size": 400, "output": "svg"})
+    assert not err and body["svg"].startswith('<svg xmlns="http://www.w3.org/2000/svg" width=')
+    assert max(body["width"], body["height"]) == 400  # size is the longer side
     assert 'stroke-dasharray="0.1 5"' in body["svg"] and ">1</text>" in body["svg"]
 
 
@@ -120,3 +122,33 @@ def test_live_falls_back_on_malformed_feed(city, monkeypatch):
     out = live.live_departures(city, [s for s in city.tt.stops if s][:2], None, 5)
     assert out["ok"] is False and out["status"].startswith("unavailable")
     assert isinstance(out["departures"], list)
+
+
+def test_map_extract_cuts_shapes_at_the_box(server):
+    box = [*at(2, 6), *at(6, 9)]  # across the river, which runs the whole height of the city
+    body, err = call(server, "map_extract", {"city": "testowo", "bbox": box})
+    assert not err, body
+    pad = 0.002  # a line keeps one point beyond the edge so it reaches it
+    shapes = [line for g in body["layers"].values() if isinstance(g, dict) for line in g.get("lines", [])]
+    shapes += [ring for g in body["layers"].values() if isinstance(g, dict) for p in g.get("polygons", []) for ring in p]
+    assert shapes
+    for shape in shapes:
+        assert all(box[0] - pad <= y <= box[2] + pad and box[1] - pad <= x <= box[3] + pad for y, x in shape)
+
+
+def test_map_extract_leaves_out_whole_layers_by_priority(server):
+    args = {"city": "testowo", "bbox": [49.999, 18.999, 50.01, 19.02]}
+    full, _ = call(server, "map_extract", args)
+    small, _ = call(server, "map_extract", {**args, "max_points": 100})
+    assert small["points"] <= 100 or "left out" in small["note"]
+    if "note" in small:
+        left = small["note"].split(": ", 1)[1].split(";")[0].split(", ")
+        assert not set(left) & set(small["layers"])  # a layer is in whole or named as left out, never in pieces
+
+
+def test_a_stop_found_by_the_start_of_its_name_is_named(server):
+    body, err = call(server, "departures", {"city": "testowo", "stop_id": "Aleja", "at": "2026-11-10 08:00"})
+    assert not err, body
+    assert body["note"].startswith('"Aleja" matched the stop "Aleja Łąkowa"') and body["at"] == "2026-11-10 08:00"
+    exact, _ = call(server, "departures", {"city": "testowo", "stop_id": "Aleja Łąkowa", "at": "2026-11-10 08:00"})
+    assert "matched the stop" not in (exact.get("note") or "")

@@ -13,6 +13,16 @@ _ABBREV = {"plac": "pl", "aleja": "al", "aleje": "al", "alei": "al", "osiedle": 
            "ksiedza": "ks", "generala": "gen"}
 
 
+QUOTE_MAX = 80  # the most of a caller's text an error message quotes back
+
+
+def quoted(s) -> str:
+    """A caller's text in double quotes for a message, cut to QUOTE_MAX characters: an answer or a log line never
+    carries a long input back."""
+    s = str(s)
+    return '"' + (s if len(s) <= QUOTE_MAX else s[: QUOTE_MAX - 1] + "…") + '"'
+
+
 def fold(s: str) -> str:
     s = unicodedata.normalize("NFD", s.translate(_EXTRA))
     s = "".join(c for c in s if not unicodedata.combining(c)).lower()

@@ -24,10 +24,11 @@ and retrieval dates (`source`, `as_of`).
 
 | City | Feed | Licence | Required credit | Prebuilt file may be published |
 |---|---|---|---|---|
-| Gdańsk | ZTM Gdańsk GTFS ("Rozkład jazdy GTFS", dataset `tristar` on ckan.multimediagdansk.pl) | CC BY (dataset licence `cc-by`); reuse rules in ZTM's "Regulamin korzystania z Otwartych danych ZTM w Gdańsku" (2024-01-08) | "Zarząd Transportu Miejskiego w Gdańsku", the URL <http://www.ztm.gda.pl/otwarty_ztm>, and the dates the data was created and retrieved | yes |
+| Gdańsk | ZTM Gdańsk GTFS ("Rozkład jazdy GTFS", dataset `tristar` on ckan.multimediagdansk.pl) | CC BY (dataset licence `cc-by`); reuse rules in ZTM's "Regulamin korzystania z Otwartych danych ZTM w Gdańsku" (2024-01-08) | "Zarząd Transportu Miejskiego w Gdańsku", the address of the service (the Regulamin prints <http://www.ztm.gda.pl/otwarty_ztm>; given over https), and the dates the data was created and retrieved | yes |
 | Kraków | ZTP Kraków GTFS: `GTFS_KRK_A` (buses), `GTFS_KRK_T` (trams), `GTFS_KRK_M` (Mobilis buses) from gtfs.ztp.krakow.pl | CC BY 4.0 (stated on gtfs.ztp.krakow.pl) | "Zarząd Transportu Publicznego w Krakowie", <https://gtfs.ztp.krakow.pl> | yes |
 | Poznań | ZTM Poznań GTFS (www.ztm.poznan.pl, developer portal) | ZTM Poznań's terms: free reuse | the source (ZTM Poznań), the date of the last update, and a statement that the data was processed; no ZTM or Poznań logos | yes |
 | Toruń | Toruń GTFS converted by Mikołaj Kuranowski (mkuran.pl) | CC0 1.0 | none required; the server credits Gmina Miasta Toruń, MZK Toruń and Mikołaj Kuranowski (<https://mkuran.pl/gtfs/>) | yes |
+| Lublin | Lublin GTFS converted by Mikołaj Kuranowski (mkuran.pl) from ZDiTM Lublin timetables | CC0 1.0 (stated on <https://mkuran.pl/gtfs/>) | none required; the server credits Zarząd Dróg i Transportu Miejskiego w Lublinie (ZDiTM) and Mikołaj Kuranowski (<https://mkuran.pl/gtfs/>) | yes |
 | Warszawa | Warszawa GTFS converted by Mikołaj Kuranowski (mkuran.pl) from ZTM Warszawa data | ZTM Warszawa data usage terms; bus shapes ODbL 1.0 | everything in the feed's `attributions.txt`: ZTM Warszawa, Mikołaj Kuranowski (<https://mkuran.pl/gtfs/>), OpenStreetMap contributors | **no**, until ZTM's terms are read |
 | Katowice (GZM) | GZM GTFS converted by Mikołaj Kuranowski (mkuran.pl) from ZTM GZM open data | CC BY 4.0 | "Zarząd Transportu Metropolitalnego" and "Mikołaj Kuranowski" (<https://mkuran.pl/gtfs/>) | yes |
 | Zakopane | transcribed by this project from the city's image-only PDF timetables (zakopane.pl) | unclear: the site states "all rights reserved" and no reuse terms | Gmina Miasto Zakopane | **map and walking only**; the transcription is not published |
@@ -38,7 +39,7 @@ The national layer (`poland.sqlite`, trains and coaches between cities) has no O
 | File | Feed | Licence | Required credit | Prebuilt file may be published |
 |---|---|---|---|---|
 | `poland` | Polish Trains GTFS (mkuran.pl) from PKP PLK open data and Koleje Mazowieckie data | PKP PLK open railway data terms v1.0: use in travel-planning tools allowed; no resale of the raw data. Koleje Mazowieckie: re-use of public sector information (terms not read yet) | "PKP Polskie Linie Kolejowe S.A.", plus everything in the feed's `attributions.txt` (Koleje Mazowieckie, Mikołaj Kuranowski) | **no**, until Koleje Mazowieckie's terms are read; build it yourself |
-| `poland` | FlixBus Europe GTFS via transport.data.gouv.fr, Polish stops only | ODbL 1.0 | FlixBus; transport.data.gouv.fr | (same file) |
+| `poland` | FlixBus Europe GTFS via transport.data.gouv.fr, trips serving Poland | ODbL 1.0 | FlixBus; transport.data.gouv.fr | (same file) |
 
 `poland.sqlite` is not offered under one licence: each feed's terms apply to its part (the FlixBus part is ODbL 1.0,
 the train part follows PKP PLK's and Koleje Mazowieckie's terms).

@@ -5,13 +5,14 @@ ends. Numbers are *measured* (2026-11-16) unless marked *estimated*.
 
 ## What was built
 
-- **`poland.sqlite`** (`poland-transit-mcp build poland --download`): the Polish Trains GTFS and FlixBus's European feed cut to its Polish stops. 14.5 MB and 12 s to build in the run measured here (its size varies with the day's feeds; another build was 20.6 MB), no OSM. See [SOURCES.md](../SOURCES.md) for what each feed holds and what the build changes.
+- **`poland.sqlite`** (`poland-transit-mcp build poland --download`): the Polish Trains GTFS and FlixBus's European feed cut to the trips that serve Poland (whole, as far as their stops keep Polish time). 14.5 MB and 12 s to build in the run measured here (its size varies with the day's feeds; another build was 20.6 MB), no OSM. See [SOURCES.md](../SOURCES.md) for what each feed holds and what the build changes.
 - **Pseudo-city `poland`:**
   - `departures` at a station, with train, category, platform and track.
   - `line_info` for a line, or a train by number or name.
   - `find_places` for stations.
   - Map tools on `poland` say what to use instead.
 - **`plan_trip(..., to_city=...)`.** One option per train or coach, up to 3. Every leg names its city and operator; train legs give train, category, platform and track. Answers list the estimated change times under `assumptions`, and a trip to or from Zakopane notes the private coaches that are missing.
+- **`plan_stations(from, to, ...)`.** Trains and coaches between stations, for a caller that brings the traveller to a station itself (another country's timetable, a car, a flight) or goes on from one. `from` and `to` are lists of stops (a `stop_id` or a station name, which stands for all its platforms in that feed; FlixBus names its stops in English, e.g. "Wroclaw, Bus Station", so a train station's name does not include them), each with its own `minutes`: from `depart_at` until the traveller is ready to board there, and from arriving there until the trip is over. These are the search's access and egress times, so this is plan_trip's own search with no walk or city transport added. An option's `depart` is its first departure minus its start stop's minutes, its `arrive` the last arrival plus its end stop's minutes, and it names the stop and minutes it used (`start`, `end`). The next option is searched from just after the previous option's `depart`, in the traveller's time, so an option from a stop with many minutes does not hide a later one from another stop. Minutes that cross midnight search the next day's timetable (arrive_by: the day before). Example (*measured* 2026-11-17, Rust engine, 50-250 ms): Praha hlavní nádraží 06:00 to Kraków Główny gives the direct 06:08 Comenius (12:10); with Bohumín given at 230 minutes as well, the same train is boarded at Bohumín and the trip starts at 06:27.
 
 ## How a trip is planned
 
@@ -67,4 +68,4 @@ Checks against operator timetables and ten example trips: [CHECKS.md](CHECKS.md)
 - **Not in the data:** the private Kraków–Zakopane coaches and minibuses (Szwagropol, Majer, Trans-Kos…), PKS Polonus, Neobus, and fares. Answers for trips to or from Zakopane say so.
 - **No live train delays.** mkuran.pl publishes them (`updates.json`, CC BY 4.0); they are not used yet.
 - **No prebuilt `poland.sqlite`.** PKP PLK's terms allow it with credit and without resale; Koleje Mazowieckie's terms are still to be read. Build it with `poland-transit-mcp build poland --download`.
-- **The rail timetable changes on 13 Dec 2026.** Rebuild the file after that; `as_of` shows each feed's validity.
+- **The rail timetable changes on 13 Dec 2026.** Rebuild the file after that; `list_cities` (or `as_of` with `detail: "full"`) shows each feed's validity.

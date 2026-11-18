@@ -24,6 +24,14 @@ uv run python scripts/smoke.py        # if you have city data built
 4. Build it, run the smoke test, and check a few departures against the operator's own timetable
    ([docs/CHECKS.md](docs/CHECKS.md) shows how).
 
+A data set that does not belong in this repository (another country's trains, a private feed) needs no change to
+`config.py`: define it in a JSON file and build it with `poland-transit-mcp build ID --datasets FILE` (or
+`POLAND_TRANSIT_DATASETS=FILE`). The format is in `src/poland_transit_mcp/datasets.py`. Unknown keys, values of the wrong
+type and the ids of built-in data sets are refused. A city data set needs a regional extract of Poland (the OSM
+downloads are Polish only); a national layer needs no map. The build writes the data set's name, time zone, notes and feed credits into the
+file, so a server loads it without the definitions file. Its time zone must keep Polish time (for example
+`Europe/Prague`): the build refuses a feed whose clock differs, and the server refuses such a file.
+
 ## Security
 
 Please report vulnerabilities privately; see [SECURITY.md](SECURITY.md).

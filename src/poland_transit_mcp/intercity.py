@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .errors import Refused
 from . import telemetry
 from .city import City
 from .geo import haversine, pt, simplify
@@ -128,11 +129,9 @@ def plan_intercity(a: City, b: City, nat: City, frm, to, depart_at: str | None =
                    arrive_by: str | None = None, max_transfers: int = 2) -> dict:
     back = bool(arrive_by)
     when = parse_when(arrive_by or depart_at)
-    if when is None:
-        raise ValueError(f'cannot parse time "{arrive_by or depart_at}" (use HH:MM, YYYY-MM-DD HH:MM or ISO 8601)')
     for c in (a, b):
         if not c.has_transit:
-            raise ValueError(f"{c.id} has no timetable data, so it cannot be joined to trains and coaches")
+            raise Refused(f"{c.id} has no timetable data, so it cannot be joined to trains and coaches")
     A, a_label, _ = resolve_point(a, frm)
     B, b_label, _ = resolve_point(b, to)
     date = when.date
@@ -141,7 +140,7 @@ def plan_intercity(a: City, b: City, nat: City, frm, to, depart_at: str | None =
     dst = Side(b, B, b_label, _walk(b, B), gateways(b, nat))
     for s in (src, dst):
         if not s.gws:
-            raise ValueError(f"no train or coach station of the national layer is inside {s.city.id}")
+            raise Refused(f"no train or coach station of the national layer is inside {s.city.id}")
     first, last = (dst, src) if back else (src, dst)  # the search runs from `first` to `last`
     sign = -1 if back else 1
     clock = sign * when.secs
@@ -248,12 +247,12 @@ def plan_intercity(a: City, b: City, nat: City, frm, to, depart_at: str | None =
     options.sort(key=(lambda o: (-o["_start"], o["transfers"])) if back else (lambda o: (o["_end"], o["transfers"])))
     options = [_option(*o["_parts"], nat, date) for o in options]
     head = {"from": {"name": a_label, "at": pt(*A), "city": a.id}, "to": {"name": b_label, "at": pt(*B), "city": b.id},
-            ("arrive_by" if back else "depart_at"): f"{fmt_date(date)} {_fmt(date, when.secs)}"}
+            ("arrive_by" if back else "depart_at"): " ".join(fmt_wall(date, when.secs))}
     note = None if options else (f"no connection found from {a.id} to {b.id} with trains or coaches within the timetable "
                                  f"window of {fmt_date(date)} (this day and the night after)")
-    notes = [n for c in (a, b) if c.cfg for n in c.cfg.intercity_notes]
+    notes = [n for c in (a, b) for n in c.intercity_notes]
     notes += [n for c in (a, nat, b) for n in (c.partial_note(date), c.transit_note(date)) if n]
-    return {**head, "itineraries": options, "assumptions": ASSUMPTIONS, "note": note, "notes": notes or None}
+    return {**head, "itineraries": options, "assumptions": ASSUMPTIONS, "note": "; ".join(filter(None, [note, *notes])) or None}
 
 
 def _best_boarding(side: Side, cands: list[tuple[int, int, int]], back: bool, date: int,
@@ -404,7 +403,7 @@ def _transit_leg(city: City, p: TLeg, date: int, offset: int, details: dict | No
            "from": _stop_ref(tt.stops[stops[0]], city.id, at(p.board) if details else None),
            "to": _stop_ref(tt.stops[stops[-1]], city.id, at(p.alight) if details else None),
            "depart": _fmt(date, p.trip.dep[p.board] + offset), "arrive": _fmt(date, p.trip.arr[p.alight] + offset),
-           "stops": len(stops) - 1, "time": "scheduled", "trip_id": p.trip.trip_id, **headway_fields(p.trip.headway, "time"),
+           "stops": len(stops) - 1, "status": "scheduled", "trip_id": p.trip.trip_id, **headway_fields(p.trip.headway, "status"),
            "path": [pt(*c) for c in simplify(tt.leg_path(pat, p.board, p.alight), 10 if not details else 60)]}
     if details:
         leg = {**leg, "train": details.get("train"), "category": details.get("category")}
@@ -502,5 +501,5 @@ def _option(seg_a: Segment, national: Itin, seg_b: Segment, nat: City, date: int
 
 def _empty(a, b, A, B, a_label, b_label, back, date, secs, note) -> dict:
     return {"from": {"name": a_label, "at": pt(*A), "city": a.id}, "to": {"name": b_label, "at": pt(*B), "city": b.id},
-            ("arrive_by" if back else "depart_at"): f"{fmt_date(date)} {_fmt(date, secs)}",
+            ("arrive_by" if back else "depart_at"): " ".join(fmt_wall(date, secs)),
             "itineraries": [], "assumptions": ASSUMPTIONS, "note": note}

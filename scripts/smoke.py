@@ -70,7 +70,8 @@ async def run(a) -> int:
             if lc is None:
                 print("FAIL list_cities:", err)
                 return 1
-            print(f"search engine: {lc.get('search_engine')}")
+            from poland_transit_mcp import engine  # the same install the server runs from
+            print(f"search engine: {engine.NAME}")
             info = {c["city"]: c for c in lc["cities"]}
             for cid in sorted(have - set(info)):
                 print(f"FAIL {cid}: the file exists but the server did not load it (see the server's stderr)")

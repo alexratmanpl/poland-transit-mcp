@@ -32,3 +32,17 @@ jobs:
       - run: uv sync --extra dev --extra fast
       - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
       - run: uv run pytest -q
+  # The server adjusts SDK internals (server.py: _strict_arguments), so it pins mcp to one minor version. This job
+  # runs the suite against the newest mcp 2.x: when it is green (the golden tools/list included), widen the pin.
+  test-newest-sdk:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - run: uv sync --extra dev
+      - run: uv pip install --upgrade "mcp>=2,<3"
+      - run: uv pip show mcp | grep -i '^version'
+      - run: uv run --no-sync pytest -q
