@@ -99,7 +99,7 @@
     },
     "detail": {
      "default": "summary",
-     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "description": "full adds each run's trip_id and colour, and full data dates (about 1.4 times larger)",
      "enum": [
       "summary",
       "full"
@@ -108,6 +108,7 @@
     },
     "limit": {
      "default": 10,
+     "description": "rows (default 10, at most 50)",
      "maximum": 50,
      "minimum": 1,
      "type": "integer"
@@ -115,6 +116,18 @@
     "line": {
      "description": "only this line, e.g. \"8\"",
      "maxLength": 60,
+     "type": "string"
+    },
+    "mode": {
+     "description": "only this mode, e.g. \"tram\"",
+     "enum": [
+      "tram",
+      "bus",
+      "trolleybus",
+      "metro",
+      "rail",
+      "ferry"
+     ],
      "type": "string"
     },
     "stop_id": {
@@ -275,6 +288,7 @@
     },
     "limit": {
      "default": 10,
+     "description": "places (default 10, at most 50)",
      "maximum": 50,
      "minimum": 1,
      "type": "integer"
@@ -392,7 +406,7 @@
     },
     "detail": {
      "default": "summary",
-     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "description": "full adds each direction's path, stops as {stop_id, name}, the colour, a train's trip_id and path, and full data dates (3 to 6 times larger, at most 40,000 characters)",
      "enum": [
       "summary",
       "full"
@@ -668,7 +682,7 @@
     },
     "detail": {
      "default": "summary",
-     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "description": "full adds each leg's path, trip id and colour, the points and city ids of its ends, and full data dates (5 to 9 times larger: train legs are long)",
      "enum": [
       "summary",
       "full"
@@ -682,6 +696,7 @@
       "properties": {
        "minutes": {
         "default": 0,
+        "description": "minutes needed there (default 0)",
         "maximum": 1440,
         "minimum": 0,
         "type": "integer"
@@ -709,6 +724,7 @@
     },
     "max_transfers": {
      "default": 2,
+     "description": "the most changes between vehicles (default 2)",
      "maximum": 4,
      "minimum": 0,
      "type": "integer"
@@ -720,6 +736,7 @@
       "properties": {
        "minutes": {
         "default": 0,
+        "description": "minutes needed there (default 0)",
         "maximum": 1440,
         "minimum": 0,
         "type": "integer"
@@ -994,7 +1011,7 @@
     },
     "detail": {
      "default": "summary",
-     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "description": "full adds each leg's path, trip id and colour, the points and city ids of its ends, and full data dates (2 to 3 times larger)",
      "enum": [
       "summary",
       "full"
@@ -1028,6 +1045,7 @@
     },
     "max_transfers": {
      "default": 2,
+     "description": "the most changes between vehicles (default 2)",
      "maximum": 4,
      "minimum": 0,
      "type": "integer"
@@ -1314,89 +1332,6 @@
      "maxLength": 40,
      "type": "string"
     },
-    "itinerary": {
-     "description": "rather pass `trip`; else a whole option of a plan made with detail=\"full\"",
-     "properties": {
-      "legs": {
-       "items": {
-        "properties": {
-         "color": {
-          "maxLength": 20,
-          "type": "string"
-         },
-         "from": {
-          "properties": {
-           "at": {
-            "items": {
-             "maximum": 180,
-             "minimum": -180,
-             "type": "number"
-            },
-            "maxItems": 2,
-            "minItems": 2,
-            "type": "array"
-           },
-           "name": {
-            "maxLength": 200,
-            "type": "string"
-           }
-          },
-          "type": "object"
-         },
-         "line": {
-          "maxLength": 60,
-          "type": "string"
-         },
-         "mode": {
-          "maxLength": 20,
-          "type": "string"
-         },
-         "path": {
-          "items": {
-           "items": {
-            "maximum": 180,
-            "minimum": -180,
-            "type": "number"
-           },
-           "maxItems": 2,
-           "minItems": 2,
-           "type": "array"
-          },
-          "maxItems": 5000,
-          "type": "array"
-         },
-         "to": {
-          "properties": {
-           "at": {
-            "items": {
-             "maximum": 180,
-             "minimum": -180,
-             "type": "number"
-            },
-            "maxItems": 2,
-            "minItems": 2,
-            "type": "array"
-           },
-           "name": {
-            "maxLength": 200,
-            "type": "string"
-           }
-          },
-          "type": "object"
-         }
-        },
-        "type": "object"
-       },
-       "maxItems": 30,
-       "minItems": 1,
-       "type": "array"
-      }
-     },
-     "required": [
-      "legs"
-     ],
-     "type": "object"
-    },
     "output": {
      "default": "png",
      "description": "svg returns the source as text (large)",
@@ -1407,7 +1342,7 @@
      "type": "string"
     },
     "size": {
-     "description": "the longer side in pixels (default: 784 for an area, less for a trip)",
+     "description": "the longer side in pixels (default: 784 for an area, less for a trip); a picture's cost grows with the square of its side: 1568 costs 4 times 784",
      "maximum": 2000,
      "minimum": 100,
      "type": "integer"
@@ -1499,6 +1434,7 @@
     },
     "max_walk_min": {
      "default": 10,
+     "description": "minutes of walk to search (default 10); the nearest 20 platforms are listed",
      "exclusiveMinimum": 0,
      "maximum": 30,
      "type": "number"
@@ -1624,7 +1560,7 @@
     },
     "detail": {
      "default": "summary",
-     "description": "full adds geometry (`path`), ids, colours, leg-end points, full data dates",
+     "description": "full adds the path as [lat, lon] points and the full data date (3 to 4 times larger)",
      "enum": [
       "summary",
       "full"

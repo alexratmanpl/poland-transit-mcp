@@ -15,6 +15,23 @@ uv run python scripts/smoke.py        # if you have city data built
 - Never commit data: `data/`, `*.sqlite`, `*.pbf`, `*.zip` and `.mcp.json` are gitignored for a reason.
 - Changes to the search must give the same answers in Python and Rust (`scripts/compare_engines.py`).
 
+## Adding or changing a tool
+
+Every tool follows one rule ([AGENTS.md](AGENTS.md#lean-by-default-more-on-demand) has it in full):
+
+- The default answer holds what a person asking the question needs, complete enough that the usual question takes
+  one call, and keeps every id another tool takes as input.
+- More comes only through the three shared kinds of argument: `detail` (`summary` or `full`, for every field code
+  needs), `limit` (more rows) and filters (a narrower question). Use those names; `full` adds fields and removes none.
+- Add a knob only where more is large: at least about 1.5 times the answer, or about 500 tokens (1,000 characters).
+  Below that, the field stays in the default or stays out. Every knob is text a model reads and a chance to call
+  the tool wrong.
+- An answer that was cut says so in `note`, with how to get the rest. An answer that was not cut says nothing.
+- Every argument has a description. Where one call can grow several times, the description says by how much, in
+  relative terms ("2 to 3 times larger"), measured on real data, never as a price per row or in tokens.
+- `tests/test_contract_answer_rule.py` checks the rule, and the size of what a model loads; after a deliberate
+  change to `tools/list`, review the golden copy's diff (`POLAND_TRANSIT_GOLDEN=update`).
+
 ## Adding a city or a feed
 
 1. Read the feed's reuse terms first. Record the licence and the required credit.

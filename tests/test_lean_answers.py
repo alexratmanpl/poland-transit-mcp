@@ -194,27 +194,19 @@ def test_a_well_formed_reference_to_another_trip_asks_to_plan_again(server):
     assert r.is_error and "call plan_trip again" in text(r)
 
 
-def test_trip_and_itinerary_together_are_refused_and_a_full_itinerary_still_draws(server):
-    plan = call(server, "plan_trip", {**PLAN, "detail": "full"}).structured_content
-    it = plan["itineraries"][0]
-    r = call(server, "render_map", {"city": "testowo", "trip": it["trip"], "itinerary": it})
-    assert r.is_error and "not both" in text(r)
-    r = call(server, "render_map", {"city": "testowo", "itinerary": it, "output": "svg"})
-    assert not r.is_error and r.structured_content["svg"].startswith("<svg")
-
-
-def test_a_trip_longer_than_one_map_is_drawn_from_its_start_with_the_rest_marked(server):
+def test_a_trip_longer_than_one_map_is_drawn_from_its_start_with_the_rest_marked(city):
     """The part of the trip from its start that fits the 18 km limit, and an arrow at the edge naming the end
-    and its distance, instead of "bbox too large" about a box the caller never gave."""
+    and its distance, instead of "bbox too large" about a box the caller never gave. (A trip reference gives the
+    drawing its itinerary; this one is built by hand to be long.)"""
+    from poland_transit_mcp.render import render_map
     start, far = at(2, 1), [at(2, 1)[0], at(2, 1)[1] + 0.6]  # about 43 km east
     itinerary = {"legs": [{"mode": "rail", "line": "IC", "from": {"name": "Alfa", "at": start},
                            "to": {"name": "Daleko", "at": far},
                            "path": [[start[0], start[1] + k * 0.01] for k in range(61)]}]}
-    r = call(server, "render_map", {"city": "testowo", "itinerary": itinerary, "output": "svg"})
-    assert not r.is_error, text(r)
-    body = r.structured_content
-    assert "Daleko" in body["note"] and "beyond this map" in body["note"]
-    assert "Daleko: " in body["svg"] and " km</text>" in body["svg"]
+    notes: list[str] = []
+    svg = render_map(city, None, itinerary, 784, None, notes)
+    assert any("Daleko" in n and "beyond this map" in n for n in notes), notes
+    assert "Daleko: " in svg and " km</text>" in svg
 
 
 def test_a_trip_that_fits_has_no_arrow(server):
@@ -246,34 +238,27 @@ def test_line_info_leaves_out_geometry_unless_asked_and_caps_directions(server, 
     assert cut["note"].startswith("the 2 directions with the most trips of 3; 1 more (1 trip) left out")
 
 
-def test_a_huge_label_in_an_itinerary_is_cut_before_drawing(server, city):
-    """Security: a 500,000-character line label took 302 s to draw as a PNG. The argument refuses it, and the
-    drawing cuts labels too (a trip reference's names come from the data, not the caller)."""
+def test_a_huge_label_in_an_itinerary_is_cut_before_drawing(city):
+    """Security: a 500,000-character line label took 302 s to draw as a PNG. The drawing cuts labels (a trip
+    reference's names come from the data, not the caller)."""
     import time
     from poland_transit_mcp.render import render_map
     start = at(2, 1)
     itinerary = {"legs": [{"mode": "bus", "line": "X" * 500_000, "from": {"name": "N" * 100_000, "at": start},
                            "to": {"name": "Y" * 100_000, "at": at(2, 6)}, "path": [start, at(2, 6)]}]}
     t = time.perf_counter()
-    r = call(server, "render_map", {"city": "testowo", "itinerary": itinerary})
-    assert r.is_error and "at most 60 characters" in text(r) and len(text(r)) < 400
     svg = render_map(city, None, itinerary, 800)
     assert "X" * 12 not in svg and "N" * 60 not in svg
     assert time.perf_counter() - t < 5
 
 
-def test_an_option_of_a_default_plan_points_to_its_trip_reference(server):
-    """A default (lean) plan has no leg paths or leg-end points: passed as an itinerary it is refused, with a bbox
-    too (else the map would show the area without the trip), and the message names `trip`."""
+def test_an_option_passed_whole_is_refused_with_its_trip_reference_named(server):
+    """render_map takes a plan option one way, its `trip` reference: an option passed whole (the argument it took
+    before 0.4) is refused, and the message says to pass `trip`, which then draws."""
     plan = call(server, "plan_trip", PLAN).structured_content
     option = next(i for i in plan["itineraries"] if any(leg["mode"] != "walk" for leg in i["legs"]))
-    for extra in ({}, {"bbox": [*at(0, 0), *at(4, 4)]}):
-        r = call(server, "render_map", {"city": "testowo", "itinerary": option, **extra})
-        assert r.is_error and "`trip`" in text(r), text(r)
-    full = call(server, "plan_trip", {**PLAN, "detail": "full"}).structured_content
-    option = next(i for i in full["itineraries"] if any(leg["mode"] != "walk" for leg in i["legs"]))
     r = call(server, "render_map", {"city": "testowo", "itinerary": option})
-    assert not r.is_error, text(r)
+    assert r.is_error and "`trip`" in text(r), text(r)
     assert not call(server, "render_map", {"city": "testowo", "trip": option["trip"]}).is_error
 
 
