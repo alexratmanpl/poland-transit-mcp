@@ -57,7 +57,7 @@ Every run: 0 errors.
 A date is a day's trips plus the routing tables built for it (forward, and backward for `arrive_by`). Each city
 keeps `--days-kept` dates (default 2), so a client planning many trips over a week can keep all seven instead of
 building a date again a few calls later. Memory for one date with both routing directions, and the time to build it
-(engine v0.4.0, Rust engine, Apple Silicon, measured 2026-11-18):
+(poland-transit-mcp 0.4.0 with the Rust engine, Apple Silicon, measured 2026-11-18):
 
 | Data set | Memory per date | Build |
 |---|---|---|

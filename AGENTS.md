@@ -159,7 +159,9 @@ claude mcp list                     # expect: poland-transit … ✔ Connected
 - The same binary and arguments are what `scripts/smoke.py` exercises, so a passing smoke test means the entry is valid.
 - Three big cities: `--cities gdansk,warszawa,katowice --memory-budget 600`.
 - With `poland` for trips between cities: `--cities gdansk,warszawa,katowice,poland --memory-budget 700`
-  (`gdansk,katowice,poland` needed 550). The start-up line prints the number your set needs.
+  (`gdansk,katowice,poland` needed 550). The start-up line prints the number your set needs with `--days-kept`
+  dates per city (default 2), so it is above these measured numbers (700 for the three cities, 850 with `poland`),
+  which come from queries on one date; `--days-kept 1` gives the old figure.
 - **Memory budget:** the default 480 MB cannot keep Gdańsk + Warszawa + Katowice loaded together; the
   server unloads cities and reloads them on demand (1–4 s per switch) and says so at start (*measured*).
   Use 600 for those three, 700 with `poland`. Over the budget, cached dates of unused cities go first (down to one
