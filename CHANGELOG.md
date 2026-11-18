@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.2 - 2026-11-19
 
 ### Added
 - `--max-calls N` (`POLAND_TRANSIT_MAX_CALLS`, default 6) and `--call-wait SECONDS` (`POLAND_TRANSIT_CALL_WAIT`, default 5): at most N tool calls run at once. Each call in flight holds memory the budget does not count, so a server shared by several clients (over `--http`) could pass any budget: with six calls in flight on Warszawa it already reached 790 MB resident at a 480 MB budget. A call that finds no free place within the wait is refused with an error starting `busy:`, a quick answer the caller can retry, instead of a queue that grows past the caller's timeout. Telemetry records it with the outcome `busy`. `create_server` takes the limit as `calls=CallLimit(...)`; without it there is no limit, as before.
