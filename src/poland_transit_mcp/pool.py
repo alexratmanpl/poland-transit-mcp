@@ -6,7 +6,8 @@ parts, the walking graph and the timetable, load on first use; the timetable kee
 dates of the least recently used cities go first, down to one date each, then whole cities are
 unloaded, least recently used first; the next query for such a city reloads them (about 4 s for
 Warszawa, measured; a date about 0.5 s). Tool calls run in worker threads, so a call pins the
-cities it uses and pinned cities are never touched.
+cities it uses and pinned cities are never unloaded; their older dates go, after those of unpinned
+cities, down to the one most recently used.
 
 The budget is for the whole process. A fixed overhead is set aside first for Python and its
 libraries (~70 MB) and for what queries leave behind before it is returned to the OS. Measured on
@@ -125,21 +126,25 @@ class CityPool:
 
     def _enforce(self, incoming: int = 0) -> None:
         """Back within the budget: first the cached dates of unpinned cities (least recently used city
-        first, its least recently used date first, down to one date each), then whole unpinned cities.
-        A date costs well under a second to build again, a city seconds."""
+        first, its least recently used date first, down to one date each), then those of pinned cities
+        (down to their most recently used date, the one calls in flight are using), then whole unpinned
+        cities. A date costs well under a second to build again, a city seconds. A pinned city's dates go
+        too because overlapping calls can keep a city pinned for as long as they keep coming: it would
+        otherwise grow to `days_kept` dates whatever the budget. A call holding a dropped date finishes on it."""
         total = self.loaded_bytes() + incoming
         if total <= self.budget:
             return
         trimmed: dict[str, int] = {}
-        for cid in list(self._recent):  # least recently used first
-            if total <= self.budget:
-                break
-            if self._pins.get(cid, 0) > 0:
-                continue
-            c = self.cities[cid]
-            while total > self.budget and c.drop_oldest_day() is not None:
-                trimmed[cid] = trimmed.get(cid, 0) + 1
-                total = self.loaded_bytes() + incoming
+        for pinned in (False, True):
+            for cid in list(self._recent):  # least recently used first
+                if total <= self.budget:
+                    break
+                if (self._pins.get(cid, 0) > 0) != pinned:
+                    continue
+                c = self.cities[cid]
+                while total > self.budget and c.drop_oldest_day() is not None:
+                    trimmed[cid] = trimmed.get(cid, 0) + 1
+                    total = self.loaded_bytes() + incoming
         dropped = []
         for cid in list(self._recent):  # least recently used first
             if total <= self.budget:

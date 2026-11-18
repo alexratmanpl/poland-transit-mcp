@@ -4,6 +4,7 @@ import sqlite3
 import threading
 
 import pytest
+from fixture import at
 
 from poland_transit_mcp import engine
 from poland_transit_mcp.city import City
@@ -157,7 +158,9 @@ def test_dates_go_down_to_one_a_city_before_any_city_is_unloaded(two_cities, cap
     assert "dropped cached dates of alpha (2), beta (2)" in capsys.readouterr().err
 
 
-def test_a_pinned_city_keeps_its_dates(two_cities):
+def test_a_pinned_city_keeps_its_most_recent_date_and_stays_loaded(two_cities):
+    """Calls that overlap can keep a city pinned for as long as they keep coming; its older dates go (after
+    those of unpinned cities), so it cannot grow to days_kept dates past the budget. It is never unloaded."""
     pool = CityPool(two_cities, budget_mb=1000, overhead_mb=0, days_kept=3)
     alpha, beta = two_cities["alpha"], two_cities["beta"]
     build(pool.use("beta"), *DATES[:3])
@@ -165,10 +168,37 @@ def test_a_pinned_city_keeps_its_dates(two_cities):
     build(pool.use("alpha"), *DATES[:3])  # this call holds alpha
     pool.budget = 1
     pool._enforce()
-    assert alpha.cached_days() == DATES[:3]
-    assert beta.heavy_bytes() == 0
+    assert alpha.cached_days() == [DATES[2]]  # the date the call used last
+    assert alpha.heavy_bytes() > 0 and beta.heavy_bytes() == 0
     pool.release()
     assert alpha.heavy_bytes() == 0
+
+
+def test_unpinned_dates_go_before_a_pinned_citys_dates(two_cities):
+    pool = CityPool(two_cities, budget_mb=1000, overhead_mb=0, days_kept=3)
+    alpha, beta = two_cities["alpha"], two_cities["beta"]
+    build(pool.use("beta"), *DATES[:3])
+    pool.release()
+    build(pool.use("alpha"), *DATES[:3])  # this call holds alpha
+    pool.budget = pool.loaded_bytes() - 1  # one date over
+    pool._enforce()
+    assert beta.cached_days() == DATES[1:3] and alpha.cached_days() == DATES[:3]
+    pool.release()
+
+
+def test_a_call_holding_a_dropped_date_finishes_on_it(two_cities):
+    pool = CityPool(two_cities, budget_mb=1000, overhead_mb=0, days_kept=3)
+    c = pool.use("alpha")
+    before = plan_trip(c, at(2, 1), at(18, 12), depart_at="2026-11-10 08:00")
+    held = c.tt.day(DATES[0])  # what a call in flight holds
+    fwd = c.tt.raptor(held, False)
+    build(c, *DATES[1:3])  # the call's date is now the least recently used
+    pool.budget = 1
+    pool._enforce()  # another call's release, say
+    assert DATES[0] not in c.cached_days()
+    assert c.tt.raptor(held, False) is fwd and held.trips  # still whole for the call holding it
+    assert plan_trip(c, at(2, 1), at(18, 12), depart_at="2026-11-10 08:00") == before  # built again, same answer
+    pool.release()
 
 
 def builds(monkeypatch) -> list:

@@ -10,7 +10,7 @@ of its own, resident and counted, and reuses a block only for an allocation that
 Warszawa's walking graph (83 MB of arrays) left 290 MB resident, and unloading it gave none of that back.
 malloc_zone_pressure_relief returns nothing from that cache; only MallocLargeCache=0, read when the process
 starts, turns it off. So the server starts itself again with it (restart_returning_freed_memory), and the
-memory budget then holds, at 3-6 ms more per trip plan (docs/SCALING.md, "Memory on macOS").
+memory budget then holds for one call at a time, at 3-6 ms more per trip plan (docs/SCALING.md, "Memory on macOS").
 Elsewhere (Windows, musl) nothing here does anything.
 """
 from __future__ import annotations

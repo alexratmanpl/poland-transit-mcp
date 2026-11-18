@@ -39,7 +39,7 @@ Now (`pool.py`):
   - **Opt-in memory mode** (`POLAND_TRANSIT_MMAP_THRESHOLD=1048576`): large frees go straight back to the OS. Only 150 MB is set aside, so city data gets 330 MB, but trip planning is about 25 % slower (Gdańsk: 88 vs 69 ms on average, three alternating runs).
 - Each city keeps `--days-kept` dates built (default 2; see [Dates kept per city](#dates-kept-per-city)).
 - When the estimate passes the budget, the cached dates of the least recently used cities are dropped first (their least recently used date first, down to one date each); then, when a city has to load and still doesn't fit, the least recently used city is unloaded. It reloads on its next query: Warszawa takes about 4 s (graph 2.1 s, timetable 1.7 s), smaller cities 1 s or less; a dropped date takes 0.1-0.55 s to build again.
-- A query pins the cities it uses, so none is unloaded, and none of its dates dropped, in the middle of a call.
+- A query pins the cities it uses, so none is unloaded in the middle of a call. A pinned city's older dates can go, after those of unpinned cities, down to its most recently used date: calls that overlap (several clients, or one over `--http`) can keep a city pinned for as long as they keep coming, and it would otherwise grow to `--days-kept` dates whatever the budget. A call holding a dropped date finishes on it.
 - To see whether the budget fits your cities, turn on OpenTelemetry: a `poland_transit.city.unloads` count that keeps rising while you use the same cities means they keep reloading ([docs/OBSERVABILITY.md](OBSERVABILITY.md)).
 - **On macOS the server starts itself again with `MallocLargeCache=0`**, so freed large blocks go back to the OS; see [Memory on macOS](#memory-on-macos).
 
@@ -69,7 +69,7 @@ macOS with freed memory returned), and the time to build it (Apple Silicon, meas
 | Gdańsk | 9 MB | 13 MB | 0.08-0.10 s |
 
 - Seven Warszawa dates take about 330 MB with the Rust engine (430 MB with the Python search), besides its walking graph and timetable structures: the number of dates kept is a hosting choice. The start-up line counts them (`size_factors` in `pool.py`: each further date 0.4 × the file size with the Rust engine and 0.5 × with the Python search; 1.7 × and 3.2 × for the national layer, measured as above).
-- The pool's estimate of a date (`trips_bytes` and `raptor_bytes` in `timetable.py`) is within 2 % of these numbers on all four data sets with either search. Before 2026-11-18 it was 0.72 to 0.89 of them (Warszawa 40 MB of 46 with the Rust engine, `poland` 22.6 of 31): it missed the Python objects kept beside the engine's tables (each pattern's stop list and trips, each stop's list of patterns) and undercounted each trip's objects and id. With many dates kept, the budget was passed by that much.
+- The pool's estimate of a date (`trips_bytes` and `raptor_bytes` in `timetable.py`) is within 2 % of these numbers on all four data sets with either search (Python 3.14; on 3.11 and 3.13, 0-2 % above them). Before 2026-11-18 it was 0.72 to 0.89 of them (Warszawa 40 MB of 46 with the Rust engine, `poland` 22.6 of 31): it missed the Python objects kept beside the engine's tables (each pattern's stop list and trips, each stop's list of patterns) and undercounted each trip's objects and id. With many dates kept, the budget was passed by that much.
 - A date is built once even when several calls ask for it at the same time: the later calls wait for that build.
 - `--warm-days` and `--warm-from` build dates at start: breadth-first over the cities, each date with both routing directions, stopping before a date would pass 70 % of the budget. Measured with Gdańsk, Kraków, `poland` and Warszawa, `--memory-budget 1000 --days-kept 3 --warm-days 3`: all twelve dates in 3.2 s. The warm-up is not repeated at midnight.
 
@@ -77,7 +77,7 @@ macOS with freed memory returned), and the time to build it (Apple Silicon, meas
 
 macOS keeps freed large blocks (a walking graph's arrays, a date's tables, a search's distance arrays) in a cache
 of its own. A block stays resident and counted in the process's physical footprint, and it is reused only for a
-later allocation that fits in it. Measured on macOS 26.7, Apple Silicon, 2026-11-18:
+later allocation that fits in it. Measured on macOS 26.7, Apple Silicon, Python 3.14, 2026-11-18:
 
 - Loading Warszawa's walking graph holds 83 MB of arrays, but takes resident memory up by 290 MB: the SQLite blobs
   it is read from and the temporary arrays of the build. Unloading it gave none of that back; dropping three of
@@ -95,22 +95,37 @@ macOS default). The variable is not in Apple's malloc man page; should a macOS v
 as before, with more memory.
 
 The real server over stdio, Gdańsk, Warszawa and Kraków with `--days-kept 7`: 420 `plan_trip` calls, ten on each of
-seven dates of one city, then the next city, twice over. Peak of the server process, resident / physical footprint:
+seven dates of one city, then the next city, twice over; one call at a time, or six in flight (as several clients,
+or one client over `--http`, send them). Peak of the server process, sampled every 50 ms, resident / physical
+footprint:
 
-| `--memory-budget` | Search | 0.5.0 | Now | `plan_trip` p50 / p95, 0.5.0 → now |
+| `--memory-budget` | Calls in flight | Search | 0.5.0 | Now |
 |---|---|---|---|---|
-| 480 | Rust | 777 / 755 MB | **460 / 351 MB** | 35 / 363 → 24 / 234 ms |
-| 480 | Python | 691 / 666 MB | **446 / 390 MB** | 41 / 258 → 47 / 295 ms |
-| 4000 | Rust | 1,087 / 1,062 MB | 842 / 741 MB | 16 / 66 → 22 / 74 ms |
-| 4000 | Python | 1,110 / 1,197 MB | 999 / 968 MB | 40 / 119 → 43 / 137 ms |
+| 480 | 1 | Rust | 770 / 745 MB | **525 / 424 MB** |
+| 480 | 1 | Python | 697 / 673 MB | **511 / 455 MB** |
+| 480 | 6 | Rust | 1,165 / 1,140 MB | 790 / 653 MB |
+| 480 | 6 | Python | 1,230 / 1,171 MB | 792 / 718 MB |
+| 4000 | 1 | Rust | 1,084 / 1,059 MB | 907 / 808 MB |
+| 4000 | 1 | Python | 1,230 / 1,205 MB | 1,065 / 1,020 MB |
+| 4000 | 6 | Rust | 1,350 / 1,326 MB | 1,170 / 1,036 MB |
+| 4000 | 6 | Python | 1,544 / 1,519 MB | 1,311 / 1,240 MB |
 
-- At 480 MB the budget now holds. At 4000 MB everything stays loaded (21 dates): the pool's estimate of it, with
-  its 5 % margin, plus Python's own ~60 MB comes to about 760 MB with the Rust engine (footprint 741 MB) and 930 MB
-  with the Python search (footprint 968 MB; the 230 MB allowance covers the difference).
+- **One call at a time, the budget now holds** for the footprint (424-455 MB at 480); resident memory passes it
+  briefly while a date is built (511-525 MB).
+- **Six calls in flight, it does not.** Each call's walking searches hold arrays the budget does not count: about
+  45 MB a call on Warszawa (the 4000 MB runs, six in flight against one). Six calls on one city at 480 MB need its
+  graph, timetable, a date and six calls' searches, more than the 250 MB city data gets, whatever is unloaded.
+  What the pool counts does hold now: calls that overlapped kept Warszawa pinned, so it kept all seven dates
+  (436 MB of city data counted against 250, in process with six workers); a pinned city's older dates now go too,
+  and the count peaks at 291 MB, as with one call at a time.
+- At 4000 MB everything stays loaded (21 dates): the pool's estimate of it, with its 5 % margin, plus Python's own
+  ~60 MB comes to about 760 MB with the Rust engine and 930 MB with the Python search, against peak footprints of
+  808 and 1,020 MB; the 230 MB allowance covers the difference.
 - The cost: every search's large arrays come fresh from the OS. With everything loaded (the same plans in process,
   at 4000 MB, two alternating runs each) a `plan_trip` took 6 ms longer at the median with the Rust engine
   (12-13 → 18-19 ms) and 3-5 ms with the Python search (35-37 → 40 ms); 420 plans took 11 → 14-15 s and
-  24-26 → 27-28 s. When cities have to reload, returning memory can be faster overall (the 480 MB Rust run above).
+  24-26 → 27-28 s. The restart itself adds 0.14-0.2 s before the first answer (spawn to the first `list_cities`
+  answer, five times each, twice: median 552-597 ms before, 689-792 ms now).
 - Resident memory stays above the footprint even so: smaller freed blocks (measured with 800 KB ones) leave the
   footprint at once but stay counted as resident until the system needs the pages. The footprint is what Activity
   Monitor's Memory column shows.
