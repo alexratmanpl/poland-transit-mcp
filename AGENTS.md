@@ -367,6 +367,8 @@ files there would be served silently); builds (network, about 1 GB in `data/` fo
 | `--days-kept N` | `POLAND_TRANSIT_DAYS_KEPT` | dates each city keeps built (at least 1; default 2); over the budget they are dropped, down to one a city, before cities are unloaded |
 | `--warm-days N` | `POLAND_TRANSIT_WARM_DAYS` | dates the start-up warm-up builds for each city, breadth-first, within 70 % of the budget (at least 1; default 1; at most `--days-kept`) |
 | `--warm-from N` | `POLAND_TRANSIT_WARM_FROM` | days after today the warm-up starts (at least 0; default 0, today; 1 warms from tomorrow) |
+| `--max-calls N` | `POLAND_TRANSIT_MAX_CALLS` | tool calls answered at once (default 6); memory grows with each call in flight |
+| `--call-wait SECONDS` | `POLAND_TRANSIT_CALL_WAIT` | how long a call waits for a free place before it is refused with an error starting `busy:` (default 5; at least 0) |
 | `--http PORT` | | Streamable HTTP on `127.0.0.1` instead of stdio |
 | `--host ADDR` | `POLAND_TRANSIT_HOST` | the address `--http` binds to (default `127.0.0.1`; e.g. `0.0.0.0` in a container). No authentication: only on a network nothing untrusted can reach |
 | `--live gdansk` | `POLAND_TRANSIT_LIVE` | opt in to the ZTM Gdańsk real-time feed (an outbound call) |
