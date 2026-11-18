@@ -110,7 +110,8 @@ def test_http_binds_loopback_unless_told_otherwise(tmp_path, monkeypatch, capsys
     class Fake:
         def run(self, transport, **kw):
             runs.append((transport, kw))
-    monkeypatch.setattr(server, "create_server", lambda pool: Fake())
+    limits = []
+    monkeypatch.setattr(server, "create_server", lambda pool, calls: limits.append(calls) or Fake())
     monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
     if env:
         monkeypatch.setenv("POLAND_TRANSIT_HOST", env)
@@ -120,6 +121,7 @@ def test_http_binds_loopback_unless_told_otherwise(tmp_path, monkeypatch, capsys
     cli.main(["--data-dir", str(tmp_path), "--cities", "testowo", "--no-download", "--http", "8080", *args])
     assert runs == [("streamable-http", {"host": host, "port": 8080, "stateless_http": True, "json_response": True})]
     assert ("no authentication" in capsys.readouterr().err) is warned
+    assert [(c.max_calls, c.wait_s) for c in limits] == [(6, 5)]  # the limit on calls at once (default)
 
 
 def test_the_host_variable_does_not_stop_stdio(tmp_path, monkeypatch):
@@ -131,7 +133,7 @@ def test_the_host_variable_does_not_stop_stdio(tmp_path, monkeypatch):
     class Fake:
         def run(self, *a, **kw):
             runs.append((a, kw))
-    monkeypatch.setattr(server, "create_server", lambda pool: Fake())
+    monkeypatch.setattr(server, "create_server", lambda pool, calls: Fake())
     monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
     monkeypatch.setenv("POLAND_TRANSIT_HOST", "0.0.0.0")
     build_fixture(tmp_path)

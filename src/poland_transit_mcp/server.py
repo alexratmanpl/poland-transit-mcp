@@ -10,6 +10,7 @@ import logging
 import math
 import re
 import sys
+import threading
 import time
 import traceback
 import types
@@ -468,7 +469,30 @@ def _quiet_sdk_log() -> None:
         sdk.addFilter(_NoCallerText())
 
 
-def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float | None = None) -> MCPServer:
+class CallLimit:
+    """At most `max_calls` tool calls run at once (None: no limit). Memory grows with every call in flight (each one
+    pins its cities and builds its dates), so a server shared by several clients needs this to stay near its memory
+    budget. A call that finds no free slot within `wait_s` seconds is refused as busy: a quick answer the caller can
+    retry, instead of a queue that grows past the caller's own timeout."""
+
+    def __init__(self, max_calls: int | None = None, wait_s: float = 5.0):
+        self.max_calls, self.wait_s = max_calls, wait_s
+        self.slots = threading.BoundedSemaphore(max_calls) if max_calls else None
+
+    def acquire(self) -> bool:
+        return self.slots is None or self.slots.acquire(timeout=self.wait_s)
+
+    def release(self) -> None:
+        if self.slots is not None:
+            self.slots.release()
+
+
+BUSY = "busy: the server is answering as many requests as it takes at once; try again in a moment"
+
+
+def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float | None = None,
+                  calls: CallLimit | None = None) -> MCPServer:
+    calls = calls or CallLimit()
     if not isinstance(cities, CityPool):
         cities = CityPool(cities, memory_budget_mb or DEFAULT_BUDGET_MB)
     pool = cities
@@ -562,6 +586,13 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
             outcome = "ok"
             with telemetry.span(f"tool {name}", **{"poland_transit.tool": name,
                                                    "poland_transit.search_engine": search_engine.NAME}) as span:
+                if not calls.acquire():  # nothing pinned or built yet: refused before any work
+                    attrs = {"poland_transit.tool": name, "poland_transit.search_engine": search_engine.NAME,
+                             "poland_transit.outcome": "busy"}
+                    span.set_attributes(attrs)
+                    span.set_status(telemetry.trace.StatusCode.ERROR, "busy")
+                    telemetry.tool_duration.record(time.perf_counter() - t, attrs)
+                    raise ToolError(BUSY)
                 try:
                     out = fn(*a, **k)
                     text = next((b.text for b in out.content if isinstance(b, TextContent)), None) if isinstance(out, CallToolResult) else None
@@ -612,6 +643,7 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
                     if outcome != "ok":
                         span.set_status(telemetry.trace.StatusCode.ERROR, outcome)
                     telemetry.tool_duration.record(time.perf_counter() - t, attrs)
+                    calls.release()
         return wrapper
 
     @server.tool(title="List cities", annotations=READ_ONLY, structured_output=True)

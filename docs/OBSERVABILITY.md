@@ -72,7 +72,7 @@ room, the tool span gets a `city.unload` event naming the city and the memory fr
 
 | Span | Attributes |
 |---|---|
-| `tool <name>` | `poland_transit.tool`, `.city`, `.search_engine`, `.outcome` (`ok`, `rejected` for bad input or missing data, `error`), `.response.bytes`; `error.type` on failure |
+| `tool <name>` | `poland_transit.tool`, `.city`, `.search_engine`, `.outcome` (`ok`, `rejected` for bad input or missing data, `busy` when refused by `--max-calls`, `error`), `.response.bytes`; `error.type` on failure |
 | `city.load` | `.city`, `.city.part` (`graph`, `timetable`, `day`, `routing_tables`), and its size: `.bytes`, `.stops`, `.trips` or `.patterns` |
 | `walk.search` | `.walk.radius_m` |
 | `routing.search` | `.search_engine` (`rust` or `python`), `.direction`, `.routing.access_stops`, `.routing.egress_stops`, `.routing.max_rounds`, `.routing.journeys` |

@@ -40,6 +40,11 @@ Now (`pool.py`):
 - Each city keeps `--days-kept` dates built (default 2; see [Dates kept per city](#dates-kept-per-city)).
 - When the estimate passes the budget, the cached dates of the least recently used cities are dropped first (their least recently used date first, down to one date each); then, when a city has to load and still doesn't fit, the least recently used city is unloaded. It reloads on its next query: Warszawa takes about 4 s (graph 2.1 s, timetable 1.7 s), smaller cities 1 s or less; a dropped date takes 0.1-0.55 s to build again.
 - A query pins the cities it uses, so none is unloaded in the middle of a call. A pinned city's older dates can go, after those of unpinned cities, down to its most recently used date: calls that overlap (several clients, or one over `--http`) can keep a city pinned for as long as they keep coming, and it would otherwise grow to `--days-kept` dates whatever the budget. A call holding a dropped date finishes on it.
+- **At most `--max-calls` calls run at once** (default 6). Each call in flight holds memory the budget does not
+  count (its walking searches: about 45 MB a call on Warszawa), so many clients at once would pass any budget. A
+  call that finds no free place within `--call-wait` seconds (default 5) is refused at once with an error that
+  starts `busy:`, which the caller can retry; keep `--call-wait` below the client's own timeout, so the caller
+  hears "busy" rather than nothing. One client calling one tool at a time never waits.
 - To see whether the budget fits your cities, turn on OpenTelemetry: a `poland_transit.city.unloads` count that keeps rising while you use the same cities means they keep reloading ([docs/OBSERVABILITY.md](OBSERVABILITY.md)).
 - **On macOS the server starts itself again with `MallocLargeCache=0`**, so freed large blocks go back to the OS; see [Memory on macOS](#memory-on-macos).
 

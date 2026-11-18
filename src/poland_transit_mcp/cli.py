@@ -106,6 +106,12 @@ def serve(argv: list[str]) -> None:
                          "70%% of the memory budget; POLAND_TRANSIT_NO_WARMUP=1 turns the warm-up off")
     ap.add_argument("--warm-from", type=at_least(0), metavar="N", default=os.environ.get("POLAND_TRANSIT_WARM_FROM") or "0",
                     help="days after today the warm-up starts (default 0, today; 1 warms from tomorrow)")
+    ap.add_argument("--max-calls", type=at_least(1), metavar="N", default=os.environ.get("POLAND_TRANSIT_MAX_CALLS") or "6",
+                    help="tool calls answered at once (default 6); memory grows with each call in flight, so this keeps "
+                         "a server shared by several clients near its memory budget")
+    ap.add_argument("--call-wait", type=at_least(0), metavar="SECONDS", default=os.environ.get("POLAND_TRANSIT_CALL_WAIT") or "5",
+                    help="how long a call waits for a free place among --max-calls before it is refused as busy "
+                         "(default 5; keep it below the client's own timeout)")
     a = ap.parse_args(argv)
     if a.host and not a.http:  # the variable alone may be set in an image that is also run over stdio
         ap.error("--host needs --http")
@@ -135,12 +141,12 @@ def serve(argv: list[str]) -> None:
             f"with --data-dir ./data/cities if you are not in a clone (prebuilt downloads are not published yet)")
         sys.exit(1)
     from .live import enable_live
-    from .server import create_server
+    from .server import CallLimit, create_server
     enable_live([c for c in a.live.split(",") if c.strip() in cities])
     from .pool import CityPool
     from .timeutil import add_days, now_local
     pool = CityPool(cities, a.memory_budget, days_kept=a.days_kept)
-    server = create_server(pool)
+    server = create_server(pool, calls=CallLimit(a.max_calls, a.call_wait))
     from . import engine, telemetry
     log(telemetry.setup(pool, engine.NAME))
     keep_all = pool.budget_to_keep_all_mb()
@@ -152,7 +158,7 @@ def serve(argv: list[str]) -> None:
     if picture_warning():
         log(f"WARNING: {picture_warning()}")
     log(f"ready: {', '.join(cities)} from {directory} in {round((time.perf_counter() - t0) * 1000)} ms "
-        f"(memory budget {a.memory_budget:g} MB, search engine: {engine.NAME})")
+        f"(memory budget {a.memory_budget:g} MB, at most {a.max_calls} calls at once, search engine: {engine.NAME})")
     if not os.environ.get("POLAND_TRANSIT_NO_WARMUP"):
         threading.Thread(target=pool.warm, args=(list(cities), add_days(now_local().date, a.warm_from)),
                          kwargs={"days": a.warm_days}, daemon=True).start()
