@@ -3,7 +3,15 @@
 Walking searches over a large city allocate big temporary arrays. glibc keeps the freed space in the
 process, so resident memory grows with use although the data is gone: measured on Warszawa, 60 trip
 plans took RSS from 231 to 280 MB, and malloc_trim brought it back to 220 MB. Calling it after each
-tool call (in a background thread, after a short quiet spell) keeps RSS close to what is actually in use. Elsewhere (macOS, Windows, musl) it does nothing.
+tool call (in a background thread, after a short quiet spell) keeps RSS close to what is actually in use.
+
+macOS keeps freed large blocks (a walking graph's arrays, a date's tables, a search's distances) in a cache
+of its own, resident and counted, and reuses a block only for an allocation that fits in it: loading
+Warszawa's walking graph (83 MB of arrays) left 290 MB resident, and unloading it gave none of that back.
+malloc_zone_pressure_relief returns nothing from that cache; only MallocLargeCache=0, read when the process
+starts, turns it off. So the server starts itself again with it (restart_returning_freed_memory), and the
+memory budget then holds, at 3-6 ms more per trip plan (docs/SCALING.md, "Memory on macOS").
+Elsewhere (Windows, musl) nothing here does anything.
 """
 from __future__ import annotations
 
@@ -27,6 +35,27 @@ try:
 except (OSError, AttributeError):  # not glibc
     _trim = None
     LARGE_FREES_RETURNED = False
+
+
+MACOS_CACHE_VAR = "MallocLargeCache"
+
+
+def restart_returning_freed_memory() -> None:
+    """On macOS, runs this process again with MallocLargeCache=0, so freed large blocks go back to the OS.
+    exec keeps the process id and its open stdin, stdout and stderr, so an MCP client on stdio sees nothing.
+    Does nothing elsewhere, or when MallocLargeCache is already set (MallocLargeCache=1 keeps the macOS
+    default; a restarted process has it at 0, so this runs once), or when the interpreter's own command line
+    is unknown. Call it only from the
+    process's entry point, before any output or input."""
+    if sys.platform != "darwin" or MACOS_CACHE_VAR in os.environ or not getattr(sys, "orig_argv", None):
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    try:
+        os.execve(sys.executable, sys.orig_argv, {**os.environ, MACOS_CACHE_VAR: "0"})
+    except OSError as e:  # carry on as before, with the cache
+        print(f"[poland-transit-mcp] could not restart with {MACOS_CACHE_VAR}=0 ({e}): freed memory stays in the "
+              "process, so resident memory can exceed the memory budget", file=sys.stderr, flush=True)
 
 
 _pending = threading.Event()

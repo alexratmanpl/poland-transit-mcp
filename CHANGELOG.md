@@ -2,6 +2,12 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- **The memory budget holds on macOS.** macOS keeps freed large blocks in the process (resident, and counted in its physical footprint), and nothing returned them: loading Warszawa's walking graph (83 MB of arrays) left 290 MB resident, and unloading cities or dropping dates gave little or none of it back. With `--memory-budget 480 --days-kept 7` and Gdańsk, Warszawa and Kraków planned over seven dates each, the server reached 777 MB resident with the Rust engine and 691 MB with the Python search. The server now starts itself again with `MallocLargeCache=0` (same process id, same stdin and stdout), so freed large blocks go back to the OS: the same run peaks at 460 and 446 MB. The cost is a few milliseconds more per trip plan with everything loaded (at the median: Rust engine 12-13 → 18-19 ms, Python search 35-37 → 40 ms). Set `MallocLargeCache=1` yourself to keep the macOS default. Linux and other systems are unchanged.
+- **A date's memory estimate counts what it holds.** It was 0.72 to 0.89 of it (Warszawa 40 MB of 46 with the Rust engine, the national layer 22.6 of 31), so the budget was passed by that much when many dates were kept: it missed the Python objects kept beside the engine's tables and undercounted each trip's objects. It is now within 2 % on Warszawa, Kraków, Gdańsk and the national layer, with either search (`trips_bytes`, `raptor_bytes`; measured in [docs/SCALING.md](docs/SCALING.md#dates-kept-per-city)). With more counted, a budget that kept a set of cities and dates loaded before may now drop a date or unload a city sooner.
+
 ## 0.5.0 - 2026-11-18
 
 ### Added

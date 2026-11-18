@@ -14,7 +14,10 @@ Warszawa, Katowice and Kraków under back-to-back queries (2026-11-16): ~230 MB 
 default allocation, ~150 MB when large frees go straight back to the OS (memory.py, opt-in,
 about 25 % slower trip planning). City data gets the rest. Estimates come from what is loaded:
 the walking graph's arrays and the timetable's counted structures, plus 5% (they came out 2–9 %
-under the measured memory for Warszawa, Katowice, Kraków and Gdańsk).
+under the measured memory for Warszawa, Katowice, Kraków and Gdańsk). A date's own estimate is
+within 2 % of what it holds, with either search (timetable.py, docs/SCALING.md). On macOS the
+server returns freed memory by starting itself with MallocLargeCache=0 (memory.py); without that,
+macOS keeps freed large blocks and resident memory passes the budget.
 """
 from __future__ import annotations
 

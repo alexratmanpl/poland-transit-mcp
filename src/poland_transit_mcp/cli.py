@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from . import (
-    memory,  # noqa: F401  (sets how large freed allocations go back to the OS, before any are made)
+    memory,  # sets how large freed allocations go back to the OS, before any are made
     net,
 )
 from .city import City
@@ -168,6 +168,8 @@ def serve(argv: list[str]) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    if argv is None and not (sys.argv[1:2] and sys.argv[1] in ("download", "build", "credits")):
+        memory.restart_returning_freed_memory()  # macOS: the server's freed memory goes back to the OS
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "download":
         ap = argparse.ArgumentParser(prog="poland-transit-mcp download")
