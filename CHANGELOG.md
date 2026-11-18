@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.1 - 2026-11-18
 
 ### Changed
 - **A pinned city's older dates can be dropped.** Calls that overlap (several clients, or one over `--http`) kept a city pinned for as long as they kept coming, so it kept all `--days-kept` dates whatever the budget: with six calls in flight on Warszawa and `--days-kept 7`, the pool counted 436 MB of city data against the 250 MB it had. Over the budget, a pinned city's dates now go after those of unpinned cities, down to its most recently used one; a pinned city is still never unloaded, and a call holding a dropped date finishes on it.
