@@ -116,17 +116,25 @@ class Day:
 
 
 def trips_bytes(trips: list[DayTrip]) -> int:
-    """Estimated memory of a day's trips: their time arrays plus ~260 B of objects per trip."""
-    return sum(260 + 4 * len(t.dep) * (1 if t.arr is t.dep else 2) for t in trips)
+    """Estimated memory of a day's trips: per trip ~200 B of objects (the trip, its index, its slots in the day's
+    lists) plus its id, and each time array (~100 B and 4 B a stop). Within 6 % of tracemalloc on Warszawa,
+    Kraków, Gdańsk and the national layer (docs/SCALING.md)."""
+    return sum(200 + len(t.trip_id) + (100 + 4 * len(t.dep)) * (1 if t.arr is t.dep else 2) for t in trips)
 
 
 def raptor_bytes(rd: RaptorData) -> int:
-    """Estimated memory of one routing direction: two int32 columns per stop position (~90 B of overhead each)."""
-    if rd.engine is not None:  # times live in the engine; Python keeps the pattern objects
-        n = rd.engine.nbytes() + sum(len(rp.stops) * 8 + 200 for rp in rd.patterns)
-    else:
-        n = sum(len(rp.stops) * (2 * 90 + 8 * rp.n_trips) + 200 for rp in rd.patterns)
-    return n + 60 * sum(len(x) for x in rd.stop_routes)
+    """Estimated memory of one routing direction, from what it holds: per stop pattern ~400 B of objects, 14 B a
+    stop position (its stop and flags) and 8 B a trip (its list); per stop a list of (pattern, position) pairs,
+    72 B a pair; and the times: in the engine (its own count), or for the Python search two int32 columns per
+    stop position (~80 B each, plus 16 B for their slots). Within 5 % of tracemalloc plus the engine's count on
+    Warszawa, Kraków, Gdańsk and the national layer, with either search (docs/SCALING.md)."""
+    n = 56 * len(rd.stop_routes) + 72 * sum(len(x) for x in rd.stop_routes)
+    for rp in rd.patterns:
+        k = len(rp.stops)
+        n += 400 + 14 * k + 8 * rp.n_trips
+        if rd.engine is None:
+            n += k * (2 * 80 + 16 + 8 * rp.n_trips)
+    return n + (rd.engine.nbytes() if rd.engine is not None else 0)
 
 
 @dataclass

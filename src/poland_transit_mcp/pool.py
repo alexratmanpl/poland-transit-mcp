@@ -6,7 +6,8 @@ parts, the walking graph and the timetable, load on first use; the timetable kee
 dates of the least recently used cities go first, down to one date each, then whole cities are
 unloaded, least recently used first; the next query for such a city reloads them (about 4 s for
 Warszawa, measured; a date about 0.5 s). Tool calls run in worker threads, so a call pins the
-cities it uses and pinned cities are never touched.
+cities it uses and pinned cities are never unloaded; their older dates go, after those of unpinned
+cities, down to the one most recently used.
 
 The budget is for the whole process. A fixed overhead is set aside first for Python and its
 libraries (~70 MB) and for what queries leave behind before it is returned to the OS. Measured on
@@ -14,7 +15,10 @@ Warszawa, Katowice and Kraków under back-to-back queries (2026-11-16): ~230 MB 
 default allocation, ~150 MB when large frees go straight back to the OS (memory.py, opt-in,
 about 25 % slower trip planning). City data gets the rest. Estimates come from what is loaded:
 the walking graph's arrays and the timetable's counted structures, plus 5% (they came out 2–9 %
-under the measured memory for Warszawa, Katowice, Kraków and Gdańsk).
+under the measured memory for Warszawa, Katowice, Kraków and Gdańsk). A date's own estimate is
+within 2 % of what it holds, with either search (timetable.py, docs/SCALING.md). On macOS the
+server returns freed memory by starting itself with MallocLargeCache=0 (memory.py); without that,
+macOS keeps freed large blocks and resident memory passes the budget.
 """
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ import sys
 import threading
 from collections import OrderedDict
 
-from . import telemetry
+from . import engine, telemetry
 from .city import City
 from .memory import LARGE_FREES_RETURNED, release_free_memory
 from .timeutil import add_days, fmt_date
@@ -90,14 +94,22 @@ class CityPool:
         return int(-(-need // 50) * 50)
 
     @staticmethod
-    def expected_bytes(c: City, days: int = 1) -> int:
-        """Memory a city will take once loaded with `days` dates built. With one date: ~1.0-1.3x its file
-        size (Warszawa 155 MB for a 130 MB file, Katowice 149/113, Kraków 79/77, measured with the Python
-        search); each further date ~0.4x (Warszawa about 55 MB a date, Kraków 20, Gdańsk 12 for a 34 MB
-        file, measured with the Rust engine). The national layer has no map in its file, only timetables:
-        51 MB for a 14.5 MB file with one date (measured), so 4x, and about 50 MB a date for a 19.6 MB
-        file, so 2.5x for each further date."""
-        first, more = (4.0, 2.5) if c.national else (1.3, 0.4)
+    def size_factors(c: City) -> tuple[float, float]:
+        """Memory per byte of a city's file: (loaded with one date, each further date), as the pool counts it
+        (its estimate plus 5 %), measured 2026-11-18 on data built that day. A city with one date: 1.0-1.3x
+        (Warszawa 153-169 MB for a 130 MB file, Kraków 82-88 for 77, Gdańsk 39-43 for 34, the lower with the
+        Rust engine). Each further date with the Rust engine: Warszawa 49 MB, Kraków 19, Gdańsk 10, so
+        0.25-0.38x; with the Python search 65, 25 and 14, so 0.32-0.5x. The national layer has no map in its file, only timetables: with the
+        Rust engine 73 MB with one date for a 19.6 MB file (3.7x) and 32 MB a further date (1.6x); with the
+        Python search 103 MB (5.2x) and 61 MB a date (3.1x)."""
+        if c.national:
+            return (4.0, 1.7) if engine.available() else (5.5, 3.2)
+        return (1.3, 0.4) if engine.available() else (1.3, 0.5)
+
+    @classmethod
+    def expected_bytes(cls, c: City, days: int = 1) -> int:
+        """Memory a city will take once loaded with `days` dates built (size_factors x its file size)."""
+        first, more = cls.size_factors(c)
         return int((first + more * (max(days, 1) - 1)) * c.path.stat().st_size)
 
     def pinned_here(self) -> list[str]:
@@ -114,21 +126,25 @@ class CityPool:
 
     def _enforce(self, incoming: int = 0) -> None:
         """Back within the budget: first the cached dates of unpinned cities (least recently used city
-        first, its least recently used date first, down to one date each), then whole unpinned cities.
-        A date costs well under a second to build again, a city seconds."""
+        first, its least recently used date first, down to one date each), then those of pinned cities
+        (down to their most recently used date, the one calls in flight are using), then whole unpinned
+        cities. A date costs well under a second to build again, a city seconds. A pinned city's dates go
+        too because overlapping calls can keep a city pinned for as long as they keep coming: it would
+        otherwise grow to `days_kept` dates whatever the budget. A call holding a dropped date finishes on it."""
         total = self.loaded_bytes() + incoming
         if total <= self.budget:
             return
         trimmed: dict[str, int] = {}
-        for cid in list(self._recent):  # least recently used first
-            if total <= self.budget:
-                break
-            if self._pins.get(cid, 0) > 0:
-                continue
-            c = self.cities[cid]
-            while total > self.budget and c.drop_oldest_day() is not None:
-                trimmed[cid] = trimmed.get(cid, 0) + 1
-                total = self.loaded_bytes() + incoming
+        for pinned in (False, True):
+            for cid in list(self._recent):  # least recently used first
+                if total <= self.budget:
+                    break
+                if (self._pins.get(cid, 0) > 0) != pinned:
+                    continue
+                c = self.cities[cid]
+                while total > self.budget and c.drop_oldest_day() is not None:
+                    trimmed[cid] = trimmed.get(cid, 0) + 1
+                    total = self.loaded_bytes() + incoming
         dropped = []
         for cid in list(self._recent):  # least recently used first
             if total <= self.budget:

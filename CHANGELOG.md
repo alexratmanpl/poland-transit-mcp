@@ -2,6 +2,16 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- **A pinned city's older dates can be dropped.** Calls that overlap (several clients, or one over `--http`) kept a city pinned for as long as they kept coming, so it kept all `--days-kept` dates whatever the budget: with six calls in flight on Warszawa and `--days-kept 7`, the pool counted 436 MB of city data against the 250 MB it had. Over the budget, a pinned city's dates now go after those of unpinned cities, down to its most recently used one; a pinned city is still never unloaded, and a call holding a dropped date finishes on it.
+
+### Fixed
+- **The memory budget holds on macOS, one call at a time.** macOS keeps freed large blocks in the process (resident, and counted in its physical footprint), and nothing returned them: loading Warszawa's walking graph (83 MB of arrays) left 290 MB resident, and unloading cities or dropping dates gave little or none of it back. With `--memory-budget 480 --days-kept 7` and Gdańsk, Warszawa and Kraków planned over seven dates each, the server reached 770 MB resident with the Rust engine and 697 MB with the Python search. The server now starts itself again with `MallocLargeCache=0` (same process id, same stdin and stdout), so freed large blocks go back to the OS: the same run peaks at a 424 and 455 MB footprint (525 and 511 MB resident, briefly, while a date is built). The cost is a few milliseconds more per trip plan with everything loaded (at the median: Rust engine 12-13 → 18-19 ms, Python search 35-37 → 40 ms) and 0.14-0.2 s more at start. Set `MallocLargeCache=1` yourself to keep the macOS default. Linux and other systems are unchanged. With six calls in flight the server still passes the budget (790 MB resident instead of 1,165 with the Rust engine): each call's walking searches, about 45 MB a call on Warszawa, are not counted ([docs/SCALING.md](docs/SCALING.md#memory-on-macos)).
+- **A date's memory estimate counts what it holds.** It was 0.72 to 0.89 of it (Warszawa 40 MB of 46 with the Rust engine, the national layer 22.6 of 31), so the budget was passed by that much when many dates were kept: it missed the Python objects kept beside the engine's tables and undercounted each trip's objects. It is now within 2 % on Warszawa, Kraków, Gdańsk and the national layer, with either search (`trips_bytes`, `raptor_bytes`; measured in [docs/SCALING.md](docs/SCALING.md#dates-kept-per-city)). With more counted, a budget that kept a set of cities and dates loaded before may now drop a date or unload a city sooner.
+- **The start-up hint ("To keep them all: --memory-budget N") counts a date at its size with the search in use**: each further date 0.5 × the file size with the Python search (0.4 × with the Rust engine, as before), and for the national layer 1.7 × with the Rust engine and 3.2 × with the Python search instead of 2.5 × for both. With the Python search the hint undercounted (Gdańsk, Warszawa, Kraków and `poland` with 7 dates: 1,500 MB hinted, 1,558 MB needed; now 1,800); with the Rust engine it is lower where it was too high (the same set: 1,450 instead of 1,500, 1,189 needed).
+
 ## 0.5.0 - 2026-11-18
 
 ### Added

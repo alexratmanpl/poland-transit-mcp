@@ -160,16 +160,17 @@ claude mcp list                     # expect: poland-transit … ✔ Connected
 - Three big cities: `--cities gdansk,warszawa,katowice --memory-budget 600`.
 - With `poland` for trips between cities: `--cities gdansk,warszawa,katowice,poland --memory-budget 700`
   (`gdansk,katowice,poland` needed 550). The start-up line prints the number your set needs with `--days-kept`
-  dates per city (default 2), so it is above these measured numbers (700 for the three cities, 850 with `poland`),
+  dates per city (default 2), so it is above these measured numbers (700 for the three cities, 850 with `poland`; 750 and 900 with the Python search),
   which come from queries on one date; `--days-kept 1` gives the old figure.
 - **Memory budget:** the default 480 MB cannot keep Gdańsk + Warszawa + Katowice loaded together; the
   server unloads cities and reloads them on demand (1–4 s per switch) and says so at start (*measured*).
   Use 600 for those three, 700 with `poland`. Over the budget, cached dates of unused cities go first (down to one
   date each), then whole cities.
 - **Dates kept:** each city keeps 2 dates built (`--days-kept`). A client planning trips over several dates (a week)
-  keeps them all with `--days-kept 7`, at about 55 MB a date for Warszawa, 50 for `poland`, 20 for Kraków, 12 for
-  Gdańsk (*measured*, with both routing directions); the start-up line counts the dates kept. `--warm-days` and
-  `--warm-from` build dates at start (default: today only); see [docs/SCALING.md](docs/SCALING.md#dates-kept-per-city).
+  keeps them all with `--days-kept 7`, at about 47 MB a date for Warszawa, 31 for `poland`, 19 for Kraków, 9 for
+  Gdańsk with the Rust engine (61, 60, 24 and 13 with the Python search; *measured*, with both routing directions);
+  the start-up line counts the dates kept. `--warm-days` and `--warm-from` build dates at start (default: today
+  only); see [docs/SCALING.md](docs/SCALING.md#dates-kept-per-city).
 - **Existing entry?** `claude mcp remove poland-transit -s local`, then add again.
 - Claude Desktop (`claude_desktop_config.json`): `{"mcpServers": {"poland-transit": {"command": "<R>/.venv/bin/poland-transit-mcp", "args": ["--cities", "gdansk", "--data-dir", "<R>/data/cities", "--no-download"]}}}`.
 - **Tools appear only after the client reconnects** (`/mcp` in Claude Code, or a restart). A session
@@ -373,5 +374,6 @@ files there would be served silently); builds (network, about 1 GB in `data/` fo
 | | `POLAND_TRANSIT_ENGINE=python` | force the Python search |
 | | `POLAND_TRANSIT_NO_WARMUP=1` | skip the background warm-up |
 | | `POLAND_TRANSIT_MMAP_THRESHOLD` | Linux/glibc memory tuning (an integer) |
+| | `MallocLargeCache` | macOS: the server sets it to 0 by starting itself again, so freed memory goes back to the OS (3-6 ms more per trip plan); set `MallocLargeCache=1` yourself to keep the macOS default |
 | | `OTEL_EXPORTER_OTLP_ENDPOINT` | enable OpenTelemetry export (needs `--extra otel`) |
 | | `SSL_CERT_FILE`, `SSL_CERT_DIR` | extra trusted roots for downloads (read once, at the first download); the system's roots and Mozilla's (`certifi`) are always trusted |
