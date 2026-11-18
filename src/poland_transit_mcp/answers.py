@@ -148,6 +148,7 @@ class Departure(TypedDict):
     line: str
     direction: str
     status: NotRequired[str]  # scheduled, or live (then `scheduled` holds the timetable time)
+    arrive: NotRequired[str]  # with `to`: the arrival time at that stop
     trip_id: full(str)
     color: full(str)
     date: NotRequired[str]
@@ -164,6 +165,7 @@ class Departures(Answer):
     at: NotRequired[str]  # the date and time the board starts from
     departures: list[Departure]
     live: NotRequired[str]  # whether live estimates were used
+    to: NotRequired[str]  # the stop the departures go on to, when asked for
     stop: NotRequired[dict[str, Any]]  # name, at and the stop_ids asked about
 
 
@@ -225,17 +227,21 @@ class RenderMap(Answer):
     svg: NotRequired[str]
 
 
+ELSEWHERE = "only in the resource credits://all and the published credits file; the credits tool leaves it out"
+
+
 class CreditEntry(TypedDict):
     __pydantic_config__ = CONFIG  # type: ignore[misc]
     id: str
     text: str  # the credit to show: maker, licence, links
-    licence: NotRequired[str]
-    city: NotRequired[str]
+    name: Annotated[NotRequired[str], Field(description=ELSEWHERE)]
+    licence: Annotated[NotRequired[str], Field(description=ELSEWHERE)]
+    city: Annotated[NotRequired[str], Field(description=ELSEWHERE)]
 
 
 class Credits(TypedDict):
     __pydantic_config__ = CONFIG  # type: ignore[misc]
     credits: list[CreditEntry]
     notice: str  # shown with the timetable credits
-    about: str
+    about: Annotated[NotRequired[str], Field(description=ELSEWHERE)]
     note: NotRequired[str]

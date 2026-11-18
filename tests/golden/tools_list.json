@@ -4,12 +4,12 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "The full credit and licence of each data source, by the ids answers carry in `credits` (answers hold only\nthe ids). Show the text of each id, and the notice, wherever the data is shown to people. The same set is\nthe resource credits://all.",
+  "description": "The full credit and licence text of each data source, by the ids answers carry in `credits`. Show the\ntext of each id, and the notice, wherever the data is shown to people. Each source's name, licence and city\nas separate fields: the resource credits://all.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
     "ids": {
-     "description": "ids from an answer's `credits`, e.g. [\"osm\"] (default: every source)",
+     "description": "ids from an answer's `credits`, or city ids for all of a city's sources (default: every source)",
      "items": {
       "maxLength": 80,
       "type": "string"
@@ -26,12 +26,18 @@
     "CreditEntry": {
      "properties": {
       "city": {
+       "description": "only in the resource credits://all and the published credits file; the credits tool leaves it out",
        "type": "string"
       },
       "id": {
        "type": "string"
       },
       "licence": {
+       "description": "only in the resource credits://all and the published credits file; the credits tool leaves it out",
+       "type": "string"
+      },
+      "name": {
+       "description": "only in the resource credits://all and the published credits file; the credits tool leaves it out",
        "type": "string"
       },
       "text": {
@@ -47,6 +53,7 @@
    },
    "properties": {
     "about": {
+     "description": "only in the resource credits://all and the published credits file; the credits tool leaves it out",
      "type": "string"
     },
     "credits": {
@@ -64,8 +71,7 @@
    },
    "required": [
     "credits",
-    "notice",
-    "about"
+    "notice"
    ],
    "type": "object"
   },
@@ -76,7 +82,7 @@
    "openWorldHint": true,
    "readOnlyHint": true
   },
-  "description": "Next scheduled departures from one stop: line, direction, time and operator, with live estimates where the\ncity offers them and the server has them on (flagged \"live\"). `at` picks another time or day. On a national\nlayer such as \"poland\" pass a station name: each departure also gives the train (number or name), category,\nplatform and track.",
+  "description": "Next departures from a stop or station: line, direction, time, operator; on a national layer also the\ntrain (number or name), platform and track. Scheduled times, with live estimates where the server has them on\n(flagged \"live\"). With `to`, only the departures that go on to that stop, each with its arrival time there:\nthe trains or trams from one stop to another.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
@@ -87,7 +93,7 @@
      "type": "string"
     },
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -116,6 +122,12 @@
      "maxLength": 200,
      "minLength": 1,
      "type": "string"
+    },
+    "to": {
+     "description": "only departures that go on to this stop (a name or stop_id)",
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
     }
    },
    "required": [
@@ -129,6 +141,9 @@
    "$defs": {
     "Departure": {
      "properties": {
+      "arrive": {
+       "type": "string"
+      },
       "category": {
        "type": "string"
       },
@@ -212,6 +227,9 @@
     "stop": {
      "additionalProperties": true,
      "type": "object"
+    },
+    "to": {
+     "type": "string"
     }
    },
    "required": [
@@ -228,12 +246,12 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "Find named places in one city by name and/or near a point: attractions, museums, parks, stations, stops,\nhotels, landmarks, streets. Names match with or without Polish diacritics. Returns name, kind and [lat, lon];\nstops also carry `stop_ids` for departures. Only this server's data: no street addresses. On a national layer\n(e.g. \"poland\") it finds stations by name.",
+  "description": "Places in one city by name and/or near a point: attractions, museums, parks, stations, stops, hotels,\nlandmarks, streets (no street addresses). Names match with or without Polish diacritics. Returns name, kind\nand [lat, lon]; a stop also has `stop_ids`. On a national layer it finds stations by name.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -357,12 +375,12 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "One line on one date: its directions with stops in order, first and last departure and how often it runs\nthrough the day (at most the 10 busiest directions). On a national layer such as \"poland\", pass a train number\nor name (e.g. \"3120/1\" or \"Karłowicz\") for that train's stops with times, platforms and tracks.",
+  "description": "One line on one date: its directions with stops in order, first and last departure and how often it\nruns through the day (at most the 10 busiest directions). On a national layer, a train's number or name (e.g.\n\"3120/1\" or \"Karłowicz\") gives that train's stops with times, platforms and tracks.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -454,7 +472,7 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "Cities and national layers this server has loaded: the `city` ids all other tools take, each with its\narea (bbox), what it supports (places, walking, timetables, trip planning, maps, live departures) and the\ndates its timetable covers, and when its data file was built. Call it first; a date outside `timetable.valid` gives no departures or trips.",
+  "description": "The loaded cities and national layers in detail: the `city` ids other tools take, each with its area\n(bbox), what it supports, its timetable feeds and the dates they cover (a date outside `timetable.valid` gives\nno departures or trips), and when its data file was built.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {},
@@ -536,7 +554,7 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "Simplified map geometry for drawing your own map of a bounding box in one city (at most about 18 km\nacross): lines and polygons cut at the box, grouped by layer, as [lat, lon] points. Detail is reduced until\nthe layers fit `max_points`; a layer that still does not fit is left out and named in the note. For a\nfinished picture use render_map.",
+  "description": "Map geometry of a bounding box in one city (at most about 18 km across), for code that draws its own\nmap: lines and polygons cut at the box, grouped by layer, as [lat, lon] points, simplified until they fit\n`max_points` (a layer that still does not fit is left out and named in the note). For a picture use\nrender_map.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
@@ -552,7 +570,7 @@
      "type": "array"
     },
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -632,18 +650,18 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "Trains and coaches between stations of a national layer (e.g. \"poland\"), with no walk or city transport\nadded. Use it when the traveller starts or ends at a station, for stations outside the listed cities (also\nabroad), or when you plan the way to the station yourself; for a door-to-door trip use plan_trip. `from` and\n`to` are lists of stops, each with the minutes the traveller needs there before boarding (from `depart_at`) or\nafter arriving, e.g. [{\"stop\": \"Kraków Główny\", \"minutes\": 15}]. Each option's depart and arrive include those\nminutes, and it names the stops it used. Up to 3 options. FlixBus stops have their own names (e.g. \"Wroclaw,\nBus Station\"): find them with find_places on the layer.",
+  "description": "Trains and coaches between stations of a national layer, with no walk or city transport added: for a\ntraveller who starts or ends at a station, and for stations outside the listed cities (also abroad). `from`\nand `to` are lists of stops, each with the minutes needed there before boarding or after arriving, e.g.\n[{\"stop\": \"Kraków Główny\", \"minutes\": 15}]; each option's depart and arrive include those minutes. Up to 3\noptions: the best connections, not every train (for all trains between two stations use departures with\n`to`). FlixBus stops have their own names (e.g. \"Wroclaw, Bus Station\"): find them with find_places on the\nlayer.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
     "arrive_by": {
-     "description": "arrive by this time instead (same format); not with depart_at",
+     "description": "arrive by this time instead; not with depart_at",
      "maxLength": 40,
      "minLength": 1,
      "type": "string"
     },
     "depart_at": {
-     "description": "local time, HH:MM or YYYY-MM-DD HH:MM (default now)",
+     "description": "HH:MM or YYYY-MM-DD HH:MM (default now)",
      "maxLength": 40,
      "minLength": 1,
      "type": "string"
@@ -685,7 +703,7 @@
      "type": "array"
     },
     "layer": {
-     "description": "the national layer to use, if several are loaded",
+     "description": "the national layer, if several are loaded",
      "maxLength": 40,
      "type": "string"
     },
@@ -953,23 +971,23 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "Door-to-door trip by public transport on the scheduled timetable: walk, ride (with changes), walk. Up to 3\noptions, each with its legs: times, line, direction, stops, operator. `from` and `to` are points or place names\nin `city`. Leave now (default), at `depart_at`, or arrive by `arrive_by`. Between two listed cities, set\n`to_city` (the city `to` is in): the plan adds trains or FlixBus coaches of the national layer (train,\nplatform, track) and city transport at both ends. For stations in cities that are not listed, or when you\nhandle the way to the station yourself, use plan_stations. Each option has a `trip` reference that render_map\ncan draw (a trip between cities: its part in `city`); it stays valid while the timetable data is the same.",
+  "description": "Door-to-door trip by public transport on the scheduled timetable: walk, ride (with changes), walk. Up\nto 3 options, each with its legs: times, line, direction, stops, operator. Leaves now, at `depart_at`, or\narrives by `arrive_by`. For a trip to another listed city set `to_city`: the plan adds trains or FlixBus\ncoaches between the cities (train, platform, track) and city transport at both ends. Each option has a `trip`\nvalue that render_map draws; it stays valid while the timetable data is the same.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
     "arrive_by": {
-     "description": "arrive by this time instead (same format); not with depart_at",
+     "description": "arrive by this time instead; not with depart_at",
      "maxLength": 40,
      "minLength": 1,
      "type": "string"
     },
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
     "depart_at": {
-     "description": "local time, HH:MM or YYYY-MM-DD HH:MM (default now)",
+     "description": "HH:MM or YYYY-MM-DD HH:MM (default now)",
      "maxLength": 40,
      "minLength": 1,
      "type": "string"
@@ -1001,10 +1019,10 @@
        "type": "string"
       }
      ],
-     "description": "[lat, lon] or a place name in `city`"
+     "description": "[lat, lon] or a place name"
     },
     "layer": {
-     "description": "the national layer to use, if several are loaded",
+     "description": "the national layer, if several are loaded",
      "maxLength": 40,
      "type": "string"
     },
@@ -1032,7 +1050,7 @@
        "type": "string"
       }
      ],
-     "description": "[lat, lon] or a place name in `city`"
+     "description": "[lat, lon] or a place name"
     },
     "to_city": {
      "description": "city id of `to`, for a trip between two cities (needs a national layer)",
@@ -1276,7 +1294,7 @@
    "openWorldHint": false,
    "readOnlyHint": true
   },
-  "description": "A picture of an area and/or a trip in one city (at most about 18 km across): map layers, the trip's walks\ndotted, its rides in line colours with the line number, stops as circles. Pass `trip` from a plan_trip option,\na `bbox`, or both. A trip longer than one map is drawn from its start, with an arrow at the edge giving the\ndistance to its end. Returns a PNG image after the JSON; output=\"svg\" returns the SVG source as text instead\n(large). Draw a map only when the user asks for one: the plan's text already holds everything it shows.",
+  "description": "A picture (PNG) of a trip and/or an area in one city, at most about 18 km across: pass `trip` from a\nplan_trip option, a `bbox`, or both. A trip longer than one map is drawn from its start, with an arrow at the\nedge giving the distance to its end. Draw a map only when the user asks for one: the plan's text already\nholds everything it shows.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
@@ -1292,7 +1310,7 @@
      "type": "array"
     },
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -1389,7 +1407,7 @@
      "type": "string"
     },
     "size": {
-     "description": "the longer side in pixels (default: 784 for an area; a trip map within about 300 image patches)",
+     "description": "the longer side in pixels (default: 784 for an area, less for a trip)",
      "maximum": 2000,
      "minimum": 100,
      "type": "integer"
@@ -1469,7 +1487,7 @@
    "additionalProperties": false,
    "properties": {
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -1503,7 +1521,7 @@
        "type": "string"
       }
      ],
-     "description": "[lat, lon] or a place name in `city`"
+     "description": "[lat, lon] or a place name"
     }
    },
    "required": [
@@ -1600,7 +1618,7 @@
    "additionalProperties": false,
    "properties": {
     "city": {
-     "description": "city id from list_cities",
+     "description": "city id",
      "maxLength": 40,
      "type": "string"
     },
@@ -1631,7 +1649,7 @@
        "type": "string"
       }
      ],
-     "description": "[lat, lon] or a place name in `city`"
+     "description": "[lat, lon] or a place name"
     },
     "to": {
      "anyOf": [
@@ -1651,7 +1669,7 @@
        "type": "string"
       }
      ],
-     "description": "[lat, lon] or a place name in `city`"
+     "description": "[lat, lon] or a place name"
     }
    },
    "required": [

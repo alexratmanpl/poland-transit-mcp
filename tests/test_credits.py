@@ -49,10 +49,14 @@ def test_an_unknown_id_is_named(server):
 
 
 def test_the_set_is_also_a_resource(server):
+    """The resource (and the published file) keeps every field; the tool gives each id's text to show and the notice:
+    name, licence and city repeat what the text and the id already say, and a model pays for every word."""
     res = run(server, lambda c: c.read_resource("credits://all"))
     body = json.loads(res.contents[0].text)
     tool = run(server, lambda c: c.call_tool("credits", {})).structured_content
-    assert body == tool
+    assert [{"id": e["id"], "text": e["text"]} for e in body["credits"]] == tool["credits"]
+    assert body["notice"] == tool["notice"] and "about" in body and "about" not in tool
+    assert any("licence" in e for e in body["credits"])
 
 
 def test_two_cities_with_the_same_date_key_are_told_apart(server):

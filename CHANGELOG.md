@@ -15,11 +15,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 - `map_extract`: shapes are cut at the box and detail is reduced until the layers fit `max_points` (default 1,000, about 20,000 characters); a layer that still does not fit is left out whole and named.
 - `list_cities`: each feed names its `credit` id instead of its licence and credit text; `in_memory` and `search_engine` are gone.
 - Tools have titles; argument errors are one line; `null` means "not given" for every argument.
+- The server's instructions name the loaded cities (the `city` ids) and say which tool answers which question, so a session needs no `list_cities` call first. Tool descriptions are shorter; every bound and every field left out by default is still described.
+- A name the data does not have is refused with the names that are close: places (`closest: Kopiec Kościuszki (landmark), …`), stops (`stops with that in their name: Teatr Bagatela`) and lines (`it has tram: 1, 3, 5, …`).
+- The `credits` tool gives each id's `text` and the notice only; `name`, `licence`, `city` and `about` stay in the `credits://all` resource and the published file. It also takes city ids (`["krakow"]`: every source of that city), so it can be called alongside the first data call. Its note about unknown ids names at most five, each cut to 80 characters.
+- `plan_stations` says that its options are the best connections, not every train.
+- `find_places` on a national layer no longer repeats a `use` sentence in every station.
 
 ### Fixed
 - Two cities with a feed of the same key (e.g. Kraków's and Toruń's `T`) reported one data date for both; such keys are now per city (`gtfs_<city>_<key>`).
 
 ### Added
+- `departures` takes `to` (another stop or station): only the runs that go on there, each with its arrival time (`arrive`). "Which trains go from Kraków to Warszawa between 6 and 9" is one call instead of a board and one `line_info` per train.
 - `list_cities` gives each data file's build time (`built_at`, UTC), so a caller can tell how old the loaded data is.
 - Smaller answers for agents: `plan_trip` and `plan_stations` leave out line geometry unless `detail: "full"` (Praha → Kraków on `plan_stations`: about 1,050 tokens instead of 5,750); each itinerary in one city carries a short `trip` reference; `render_map` takes it (`trip`) and returns a PNG image by default (a trip map: about 1,060 image tokens and 235 text tokens instead of about 32,000 tokens of SVG text). `output: "svg"` keeps the SVG. PNG rendering uses `resvg` (MIT), now a dependency.
 - Every tool declares the shape of its answer (`outputSchema`) and returns it as `structuredContent`, with the same compact JSON as text as before. Clients that generate code from tool definitions (for example Cloudflare's Code Mode) get typed results.

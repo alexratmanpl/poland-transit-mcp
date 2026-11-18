@@ -173,7 +173,9 @@ claude mcp list                     # expect: poland-transit … ✔ Connected
 
 ## 7. Using the tools
 
-Call `list_cities` first. Conventions an agent must know:
+The server's instructions name the loaded cities (the `city` ids) and say which tool answers which question, so a
+session needs no first call; `list_cities` gives the details (area, features, timetable dates). Conventions an agent
+must know:
 
 - Coordinates are `[lat, lon]`; times are local (Europe/Warsaw): `HH:MM` or `YYYY-MM-DD HH:MM`.
 - Eleven read-only tools (`?` = optional), exactly as the server declares them; an argument a tool does not declare is
@@ -183,7 +185,7 @@ Call `list_cities` first. Conventions an agent must know:
   list_cities()
   find_places(city, query?, near?, radius_m?, kinds?, limit?)
   stops_near(city, point, max_walk_min?, date?)
-  departures(city, stop_id, at?, line?, limit?, detail?)
+  departures(city, stop_id, at?, line?, to?, limit?, detail?)
   line_info(city, line, date?, detail?)
   walk_route(city, from, to, detail?)
   plan_trip(city, from, to, depart_at?, arrive_by?, max_transfers?, to_city?, layer?, detail?)
@@ -195,10 +197,13 @@ Call `list_cities` first. Conventions an agent must know:
 
 - `find_places` `kinds` are **singular**: `attraction, museum, park, station, stop, hotel, landmark, street`.
   `near` is exactly `[lat, lon]`.
-- `departures` takes `stop_id` (an id **or** a name); `plan_trip` takes `from`/`to` (point or place name),
+- `departures` takes `stop_id` (an id **or** a name) and, with `to` (another stop), gives only the runs that go on
+  there, each with its arrival time: the trains or trams from one stop to another in one call. `plan_trip` takes `from`/`to` (point or place name; Polish names match best),
   `depart_at` or `arrive_by`, optional `max_transfers` (0–4) and `to_city` (needs a national layer such as `poland`).
 - `plan_stations` (needs a national layer) takes `from` and `to` as lists of `{"stop": stop_id or station name,
-  "minutes": n}`: minutes before boarding there, counted from `depart_at`, and after arriving there. It adds no walk.
+  "minutes": n}`: minutes before boarding there, counted from `depart_at`, and after arriving there. It adds no walk,
+  and gives the best connections (up to 3), not every train: for all trains between two stations use `departures`
+  with `to`.
 - A **national layer** is any data file of kind `national` (`poland`, or one built from a definitions file, see
   CONTRIBUTING). With one loaded, `plan_trip`'s `to_city` and `plan_stations` use it; with several, name it in `layer`.
 - On `poland` only `departures`, `line_info` and `find_places` (stations) work; it has no map.
@@ -209,7 +214,12 @@ Call `list_cities` first. Conventions an agent must know:
   `gtfs_<city>_<key>` when two cities of one answer share a key; a feed that is not ok is left out); with `detail: "full"`, and in `list_cities`, each feed has
   `published`, `retrieved`, `valid_from` and `valid_to`. The full credit and licence of each id: the `credits` tool,
   the `credits://all` resource, or `poland-transit-mcp credits` (a JSON file to publish with the data). Show the
-  credits wherever the data is shown.
+  credits wherever the data is shown. The `credits` tool gives each id's text and the notice (the resource and the
+  file also give name, licence and city); it takes city ids too (`["krakow"]`: every source of that city), so it can
+  be called alongside the first data call instead of in a request of its own.
+- A name the data does not have is refused with the names that are close: places (`no place named "Kosciuszko
+  Mound" … closest: Kopiec Kościuszki (landmark), …`), stops (`stops with that in their name: Teatr Bagatela`) and
+  lines (`no line "4" … it has tram: 1, 3, 5, …`), so the next call is the right one.
 - Answers come as `structuredContent` matching each tool's `outputSchema` (`answers.py`), and as the same JSON in a
   text block (the first content block; a map's PNG follows it).
 - Answers are lean unless asked (`detail: "full"`, on `departures`, `line_info`, `walk_route`, `plan_trip`,
