@@ -2,6 +2,19 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- `--days-kept N` (`POLAND_TRANSIT_DAYS_KEPT`, default 2): how many dates each city keeps built in memory. A client planning many trips over several dates (a week) no longer has a date built again a few calls later. The start-up line ("these cities need about N MB") counts the dates kept.
+- `--warm-days N` (`POLAND_TRANSIT_WARM_DAYS`, default 1) and `--warm-from N` (`POLAND_TRANSIT_WARM_FROM`, default 0): the start-up warm-up builds N dates from that many days after today, breadth-first over the cities (every city's first date, then every city's second), each with both routing directions, and stops before a date would pass 70 % of the budget. `--warm-days` above `--days-kept` is capped, with a log line. The defaults warm today, as before.
+
+### Changed
+- **Budget enforcement:** over the memory budget, the cached dates of the least recently used cities are now dropped first (least recently used date first, down to one date each), and only then are whole cities unloaded, as before. This holds for every setting, the default included: a city's second date now goes before another city is unloaded. Only cities no call is using are touched.
+- The memory estimate is kept per date (set when a date or one of its routing tables is built) instead of walking every trip of every date.
+
+### Fixed
+- Calls arriving together for a date that is not built yet build it, and each of its routing directions, once; the others wait for that build. Before, 16 threads asking for one new date built it 16 times and its routing tables 43 times (synthetic city), each copy memory the budget did not count.
+
 ## 0.4.0 - 2026-11-18
 
 ### Changed

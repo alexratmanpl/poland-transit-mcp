@@ -40,7 +40,7 @@ memory settings, Claude Desktop and other clients, troubleshooting and every fla
 <summary><b>Main options</b></summary>
 
 - `--cities a,b` or `all`: which cities to serve. Add `poland` for trips between cities (trains and FlixBus).
-- `--memory-budget 480`: memory target for the whole process, in MB. Cities load on their first query; when the budget is reached, the least recently used city is unloaded. At start, the server says if your cities need more to stay loaded together, and how much. See [docs/SCALING.md](docs/SCALING.md).
+- `--memory-budget 480`: memory target for the whole process, in MB. Cities load on their first query; when the budget is reached, cached dates of the least recently used cities are dropped first, then the least recently used city is unloaded. At start, the server says if your cities need more to stay loaded together, and how much. See [docs/SCALING.md](docs/SCALING.md).
 - `--http 8080`: Streamable HTTP on `127.0.0.1:8080/mcp` instead of stdio (`--host 0.0.0.0` in a container; there is no authentication, see [SECURITY.md](SECURITY.md)).
 - `--live gdansk`: opt in to ZTM Gdańsk's real-time estimates.
 - `OTEL_EXPORTER_OTLP_ENDPOINT=…` with the `otel` extra: traces and metrics to your collector. See [Observability](#observability).

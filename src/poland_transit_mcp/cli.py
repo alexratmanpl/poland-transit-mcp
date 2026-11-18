@@ -1,6 +1,7 @@
 """Command line.
 
-  poland-transit-mcp [--cities gdansk,krakow|all] [--memory-budget MB] [--data-dir DIR] [--http PORT [--host ADDR]] [--live gdansk] [--no-download]
+  poland-transit-mcp [--cities gdansk,krakow|all] [--memory-budget MB] [--days-kept N] [--warm-days N] [--warm-from N]
+                     [--data-dir DIR] [--http PORT [--host ADDR]] [--live gdansk] [--no-download]
   poland-transit-mcp download gdansk,krakow [--data-dir DIR] [--from URL]
   poland-transit-mcp build gdansk [--download] [--skip-gtfs] [--force] [--data-dir DIR]
   poland-transit-mcp credits [--cities gdansk,poland] [--data-dir DIR] > credits.json
@@ -40,6 +41,19 @@ def data_dir(explicit: str | None) -> Path:
     if (root / "pyproject.toml").is_file() and local.is_dir():
         return local
     return Path.home() / ".cache" / "poland-transit-mcp"
+
+
+def at_least(lowest: int):
+    """An argparse type: an integer, `lowest` or more."""
+    def parse(text: str) -> int:
+        try:
+            n = int(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+        if n < lowest:
+            raise argparse.ArgumentTypeError(f"{n} is less than {lowest}")
+        return n
+    return parse
 
 
 def download(ids: list[str], directory: Path, base: str | None = None) -> None:
@@ -83,6 +97,15 @@ def serve(argv: list[str]) -> None:
                          "is set aside for Python and one query, "
                          "and least recently used cities are unloaded to keep within the rest (they reload on "
                          "their next query)")
+    # string defaults go through `type` too, so a bad variable is refused like a bad flag
+    ap.add_argument("--days-kept", type=at_least(1), metavar="N", default=os.environ.get("POLAND_TRANSIT_DAYS_KEPT") or "2",
+                    help="dates each city keeps built in memory (default 2); over the memory budget, cached dates "
+                         "of unused cities are dropped, down to one each, before whole cities are unloaded")
+    ap.add_argument("--warm-days", type=at_least(1), metavar="N", default=os.environ.get("POLAND_TRANSIT_WARM_DAYS") or "1",
+                    help="dates the start-up warm-up builds for each city (default 1, at most --days-kept), within "
+                         "70%% of the memory budget; POLAND_TRANSIT_NO_WARMUP=1 turns the warm-up off")
+    ap.add_argument("--warm-from", type=at_least(0), metavar="N", default=os.environ.get("POLAND_TRANSIT_WARM_FROM") or "0",
+                    help="days after today the warm-up starts (default 0, today; 1 warms from tomorrow)")
     a = ap.parse_args(argv)
     if a.host and not a.http:  # the variable alone may be set in an image that is also run over stdio
         ap.error("--host needs --http")
@@ -115,22 +138,24 @@ def serve(argv: list[str]) -> None:
     from .server import create_server
     enable_live([c for c in a.live.split(",") if c.strip() in cities])
     from .pool import CityPool
-    from .timeutil import now_local
-    pool = CityPool(cities, a.memory_budget)
+    from .timeutil import add_days, now_local
+    pool = CityPool(cities, a.memory_budget, days_kept=a.days_kept)
     server = create_server(pool)
     from . import engine, telemetry
     log(telemetry.setup(pool, engine.NAME))
     keep_all = pool.budget_to_keep_all_mb()
     if keep_all > a.memory_budget:
-        log(f"memory: these cities need about {keep_all} MB to stay loaded together; with {a.memory_budget:g} MB the "
-            f"least recently used is unloaded and reloads on its next query (1-4 s). To keep them all: --memory-budget {keep_all}")
+        log(f"memory: these cities need about {keep_all} MB to stay loaded together with {a.days_kept} dates each; with "
+            f"{a.memory_budget:g} MB, cached dates are dropped first, then the least recently used city is unloaded and "
+            f"reloads on its next query (1-4 s). To keep them all: --memory-budget {keep_all}")
     from .server import picture_warning
     if picture_warning():
         log(f"WARNING: {picture_warning()}")
     log(f"ready: {', '.join(cities)} from {directory} in {round((time.perf_counter() - t0) * 1000)} ms "
         f"(memory budget {a.memory_budget:g} MB, search engine: {engine.NAME})")
     if not os.environ.get("POLAND_TRANSIT_NO_WARMUP"):
-        threading.Thread(target=pool.warm, args=(list(cities), now_local().date), daemon=True).start()
+        threading.Thread(target=pool.warm, args=(list(cities), add_days(now_local().date, a.warm_from)),
+                         kwargs={"days": a.warm_days}, daemon=True).start()
     if a.http:
         shown = f"[{a.host}]" if ":" in a.host else a.host
         log(f"Streamable HTTP on http://{shown}:{a.http}/mcp")

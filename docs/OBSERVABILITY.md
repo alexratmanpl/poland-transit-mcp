@@ -96,7 +96,9 @@ Histogram buckets are in seconds, from 5 ms to 10 s (0.1 ms to 1 s for the searc
 defaults are made for milliseconds; with them, every call would have fallen in the first bucket.
 
 **Is the memory budget right?** If `city.unloads` keeps rising while you use the same few cities,
-and `memory.city_data` sits at `memory.budget`, raise `--memory-budget`.
+and `memory.city_data` sits at `memory.budget`, raise `--memory-budget`. Over the budget, cached dates
+are dropped before cities are unloaded: `city.loads` with part `day` rising for dates already asked
+for means dates are built again (raise the budget, or lower `--days-kept`).
 
 ## Privacy
 

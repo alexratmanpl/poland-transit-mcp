@@ -162,7 +162,12 @@ claude mcp list                     # expect: poland-transit … ✔ Connected
   (`gdansk,katowice,poland` needed 550). The start-up line prints the number your set needs.
 - **Memory budget:** the default 480 MB cannot keep Gdańsk + Warszawa + Katowice loaded together; the
   server unloads cities and reloads them on demand (1–4 s per switch) and says so at start (*measured*).
-  Use 600 for those three, 700 with `poland`.
+  Use 600 for those three, 700 with `poland`. Over the budget, cached dates of unused cities go first (down to one
+  date each), then whole cities.
+- **Dates kept:** each city keeps 2 dates built (`--days-kept`). A client planning trips over several dates (a week)
+  keeps them all with `--days-kept 7`, at about 55 MB a date for Warszawa, 50 for `poland`, 20 for Kraków, 12 for
+  Gdańsk (*measured*, with both routing directions); the start-up line counts the dates kept. `--warm-days` and
+  `--warm-from` build dates at start (default: today only); see [docs/SCALING.md](docs/SCALING.md#dates-kept-per-city).
 - **Existing entry?** `claude mcp remove poland-transit -s local`, then add again.
 - Claude Desktop (`claude_desktop_config.json`): `{"mcpServers": {"poland-transit": {"command": "<R>/.venv/bin/poland-transit-mcp", "args": ["--cities", "gdansk", "--data-dir", "<R>/data/cities", "--no-download"]}}}`.
 - **Tools appear only after the client reconnects** (`/mcp` in Claude Code, or a restart). A session
@@ -356,6 +361,9 @@ files there would be served silently); builds (network, about 1 GB in `data/` fo
 | `--data-dir DIR` | `POLAND_TRANSIT_DATA` | the folder with the `.sqlite` city files. (`build --data-dir` is different: the data root holding `raw/`, `work/` and `cities/`, default `./data`) |
 | `--no-download` | | never fetch missing files (always use it until the release exists) |
 | `--memory-budget MB` | `POLAND_TRANSIT_MEMORY_MB` | memory target; default 480 |
+| `--days-kept N` | `POLAND_TRANSIT_DAYS_KEPT` | dates each city keeps built (at least 1; default 2); over the budget they are dropped, down to one a city, before cities are unloaded |
+| `--warm-days N` | `POLAND_TRANSIT_WARM_DAYS` | dates the start-up warm-up builds for each city, breadth-first, within 70 % of the budget (at least 1; default 1; at most `--days-kept`) |
+| `--warm-from N` | `POLAND_TRANSIT_WARM_FROM` | days after today the warm-up starts (at least 0; default 0, today; 1 warms from tomorrow) |
 | `--http PORT` | | Streamable HTTP on `127.0.0.1` instead of stdio |
 | `--host ADDR` | `POLAND_TRANSIT_HOST` | the address `--http` binds to (default `127.0.0.1`; e.g. `0.0.0.0` in a container). No authentication: only on a network nothing untrusted can reach |
 | `--live gdansk` | `POLAND_TRANSIT_LIVE` | opt in to the ZTM Gdańsk real-time feed (an outbound call) |

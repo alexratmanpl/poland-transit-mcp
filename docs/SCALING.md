@@ -37,8 +37,9 @@ Now (`pool.py`):
 - `--memory-budget` (default 480 MB) is a target for the whole process. A measured allowance is set aside for Python and for memory that queries leave behind before it is returned to the OS. City data gets the rest:
   - **Default:** 230 MB set aside, so city data gets 250 MB of a 480 MB budget.
   - **Opt-in memory mode** (`POLAND_TRANSIT_MMAP_THRESHOLD=1048576`): large frees go straight back to the OS. Only 150 MB is set aside, so city data gets 330 MB, but trip planning is about 25 % slower (Gdańsk: 88 vs 69 ms on average, three alternating runs).
-- When a city has to load and doesn't fit, the least recently used city is unloaded first. It reloads on its next query: Warszawa takes about 4 s (graph 2.1 s, timetable 1.7 s), smaller cities 1 s or less.
-- A query pins the cities it uses, so none is unloaded in the middle of a call.
+- Each city keeps `--days-kept` dates built (default 2; see [Dates kept per city](#dates-kept-per-city)).
+- When the estimate passes the budget, the cached dates of the least recently used cities are dropped first (their least recently used date first, down to one date each); then, when a city has to load and still doesn't fit, the least recently used city is unloaded. It reloads on its next query: Warszawa takes about 4 s (graph 2.1 s, timetable 1.7 s), smaller cities 1 s or less; a dropped date takes 0.1-0.55 s to build again.
+- A query pins the cities it uses, so none is unloaded, and none of its dates dropped, in the middle of a call.
 - To see whether the budget fits your cities, turn on OpenTelemetry: a `poland_transit.city.unloads` count that keeps rising while you use the same cities means they keep reloading ([docs/OBSERVABILITY.md](OBSERVABILITY.md)).
 
 Measured with `--memory-budget 480`:
@@ -50,6 +51,25 @@ Measured with `--memory-budget 480`:
 | All eight cities | **420 MB** | 16–200 ms for six cities · Warszawa 345 · Katowice 460 ms | up to 1.8 s (Katowice) |
 
 Every run: 0 errors.
+
+### Dates kept per city
+
+A date is a day's trips plus the routing tables built for it (forward, and backward for `arrive_by`). Each city
+keeps `--days-kept` dates (default 2), so a client planning many trips over a week can keep all seven instead of
+building a date again a few calls later. Memory for one date with both routing directions, and the time to build it
+(engine v0.4.0, Rust engine, Apple Silicon, measured 2026-11-18):
+
+| Data set | Memory per date | Build |
+|---|---|---|
+| Warszawa | about 55 MB | 0.52-0.56 s |
+| `poland` (national layer) | about 50 MB | 0.22-0.27 s |
+| Kraków | about 20 MB | 0.20-0.22 s |
+| Gdańsk | about 12 MB | 0.08-0.10 s |
+
+- Seven Warszawa dates take about 385 MB, besides its walking graph and timetable structures: the number of dates kept is a hosting choice. The start-up line counts them (`expected_bytes`: each further date about 0.4 × the file size, 2.5 × for the national layer).
+- The pool's estimate of a date (from its counted structures) runs under these measured numbers (Warszawa 41 MB, `poland` 23 MB): the 5 % margin of the whole-city estimate does not cover many dates, so leave room in `--memory-budget` when keeping more than a few.
+- A date is built once even when several calls ask for it at the same time: the later calls wait for that build.
+- `--warm-days` and `--warm-from` build dates at start: breadth-first over the cities, each date with both routing directions, stopping before a date would pass 70 % of the budget. Measured with Gdańsk, Kraków, `poland` and Warszawa, `--memory-budget 1000 --days-kept 3 --warm-days 3`: all twelve dates in 3.2 s. The warm-up is not repeated at midnight.
 
 ### Trips between cities
 

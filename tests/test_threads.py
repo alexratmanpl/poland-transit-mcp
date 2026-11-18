@@ -2,6 +2,7 @@
 threads at the same time, also while the memory budget unloads the city (pool.py)."""
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -114,3 +115,87 @@ def test_calls_arriving_together_at_an_unloaded_city_load_it_once(three, monkeyp
     alfa.unload()
     at_once(lambda: nat.tt, lambda: alfa.graph, rounds=4)
     assert sorted(built) == ["graph", "poland"]
+
+
+def slowed(monkeypatch, obj, name: str, calls: list) -> None:
+    """Records each call of obj.name and makes it take a few ms, so threads asking at once overlap."""
+    orig = getattr(obj, name)
+
+    def run(*a):
+        calls.append(a)
+        time.sleep(0.005)
+        return orig(*a)
+
+    monkeypatch.setattr(obj, name, run)
+
+
+def test_calls_asking_for_the_same_new_date_build_it_once(city_dir, monkeypatch, often_switching):
+    """A date and each of its routing directions are built once; the others wait for that build."""
+    from poland_transit_mcp import engine
+    from poland_transit_mcp.city import City
+
+    tt = City.open(city_dir, "testowo").tt
+    days, tables, transfers = [], [], []
+    slowed(monkeypatch, tt, "_build_day", days)
+    slowed(monkeypatch, tt, "_build_raptor", tables)
+    if engine.available():
+        slowed(monkeypatch, engine, "transfers", transfers)
+    got = at_once(lambda: (tt.day(20261110), tt.raptor(tt.day(20261110), False)),
+                  lambda: (tt.day(20261110), tt.raptor(tt.day(20261110), True)), rounds=3)
+    assert days == [(20261110,)]
+    assert sorted(backward for _, backward in tables) == [False, True]
+    assert len(transfers) == (1 if engine.available() else 0)
+    day = got[0][0]
+    assert all(d is day for d, _ in got)  # one Day, one table per direction, for every call
+    assert {id(rd) for _, rd in got} == {id(day.forward), id(day.backward)}
+
+
+def test_a_failed_build_fails_every_call_waiting_for_it_and_the_next_call_tries_again(city_dir, monkeypatch,
+                                                                                      often_switching):
+    from poland_transit_mcp.city import City
+
+    tt = City.open(city_dir, "testowo").tt
+    orig, calls = tt._build_day, []
+
+    def fail_once(d):
+        calls.append(d)
+        time.sleep(0.005)
+        if len(calls) == 1:
+            raise OSError("disk went away")
+        return orig(d)
+
+    monkeypatch.setattr(tt, "_build_day", fail_once)
+    start = threading.Barrier(THREADS)
+
+    def ask():
+        start.wait()
+        try:
+            return tt.day(20261110)
+        except OSError as e:
+            return e
+
+    with ThreadPoolExecutor(THREADS) as ex:
+        got = [f.result() for f in [ex.submit(ask) for _ in range(THREADS)]]
+    failed = [g for g in got if isinstance(g, OSError)]
+    assert failed and all(str(e) == "disk went away" for e in failed)  # nobody hangs
+    day = tt.day(20261110)
+    assert day.trips and tt.days_cached() == [20261110]
+    assert len(calls) == 2  # the failed build, then one more (by a call that came after it, or this one)
+
+
+def test_the_size_estimate_equals_a_full_recount(city_dir, often_switching):
+    """Each date carries its own size, added to as its routing tables are built from many threads at once."""
+    from poland_transit_mcp.city import City
+    from poland_transit_mcp.timetable import raptor_bytes, trips_bytes
+
+    tt = City.open(city_dir, "testowo").tt
+    tt.days_kept = 3
+    dates = [20261110, 20261111, 20261112, 20261113]
+    at_once(*[lambda d=d, back=back: tt.raptor(tt.day(d), back) for d in dates for back in (False, True)], rounds=8)
+    cached = list(tt._days.values())
+    assert len(cached) == 3
+    transfers = tt._engine_transfers.nbytes() if tt._engine_transfers is not None else 0
+    recount = 1900 * (len(tt.stops) + len(tt.patterns)) + transfers + sum(
+        trips_bytes(day.trips) + sum(raptor_bytes(rd) for rd in (day.forward, day.backward) if rd is not None)
+        for day in cached)
+    assert tt.approx_bytes() == recount
