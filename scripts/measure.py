@@ -16,7 +16,6 @@ import os
 import platform
 import random
 import re
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -25,6 +24,7 @@ import anyio
 from mcp import Client, StdioServerParameters
 
 from poland_transit_mcp.city import City
+from poland_transit_mcp.shared_db import connect_read_only
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--cities", default="gdansk,wroclaw,krakow")
@@ -103,7 +103,7 @@ async def main() -> dict:
         if a.interleave:
             anchors_of = {}
             for c in CITIES:
-                db = sqlite3.connect(f"file:{DATA / f'{c}.sqlite'}?mode=ro", uri=True)
+                db = connect_read_only(DATA / f'{c}.sqlite')
                 anchors_of[c] = db.execute("SELECT lat, lon FROM stops WHERE node IS NOT NULL").fetchall()
                 db.close()
 
@@ -119,7 +119,7 @@ async def main() -> dict:
             out["memory_after_queries"] = rss_of(pid)
             out["plan_trip_over_500ms"] = sum(1 for v in lat["plan_trip"] if v > 500)
         for c in ([] if a.interleave else CITIES):
-            db = sqlite3.connect(f"file:{DATA / f'{c}.sqlite'}?mode=ro", uri=True)
+            db = connect_read_only(DATA / f'{c}.sqlite')
             stops = db.execute("SELECT stop_id, lat, lon FROM stops WHERE node IS NOT NULL").fetchall()
             # a city without timetables: sample around mapped places instead (a random point in the
             # bounding box may be in a forest or on a mountain, which walking correctly refuses)

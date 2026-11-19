@@ -1,11 +1,11 @@
 """Build safeguards (build/safeguard.py): a worse rebuild never replaces the last good city file."""
 import json
 import sqlite3
-import urllib.request
 from datetime import date, timedelta
 
 import pytest
 
+from poland_transit_mcp import net
 from poland_transit_mcp.build import build_city, safeguard
 from poland_transit_mcp.build.safeguard import (
     EXIT_REJECTED,
@@ -138,7 +138,7 @@ def test_download_failure_keeps_the_previous_zip(tmp_path, monkeypatch):
     def fail(*a, **k):
         raise OSError("certificate verify failed")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    monkeypatch.setattr(net, "_open", fail)
     assert build_city.download("https://example.invalid/a.zip", dest) is False
     assert dest.read_bytes() == b"last good zip"
     assert not (tmp_path / "A.zip.part").exists()
@@ -160,3 +160,26 @@ def test_read_feeds_without_a_usable_file(tmp_path):
     db.commit()
     db.close()
     assert read_feeds(bad) is None
+
+
+@pytest.mark.parametrize("folder", ["we?ird#dir", "a#b", "q?mode=rw", "100% sure"])
+def test_a_city_file_opens_read_only_whatever_its_path(city_dir, tmp_path, folder):
+    """A `?` or `#` in the path must not end the file name in the SQLite URI: that dropped mode=ro and opened
+    (or created) another file, writable."""
+    import shutil
+
+    from poland_transit_mcp.city import City
+    from poland_transit_mcp.shared_db import SharedConnection
+    where = tmp_path / folder
+    where.mkdir()
+    shutil.copy(city_dir / "testowo.sqlite", where / "testowo.sqlite")
+    before = sorted(p.name for p in tmp_path.iterdir())
+    db = SharedConnection.read_only(where / "testowo.sqlite")
+    assert dict(db.execute("SELECT key, value FROM meta"))["city"] == "testowo"
+    for change in ("UPDATE meta SET value = 'x' WHERE key = 'city'", "CREATE TABLE planted (x)"):
+        with pytest.raises(sqlite3.OperationalError):
+            db.execute(change)
+    db.close()
+    assert read_feeds(where / "testowo.sqlite")[0]["status"] == "ok"
+    assert City.open(where, "testowo").id == "testowo"
+    assert sorted(p.name for p in tmp_path.iterdir()) == before  # no stray file at a cut-off name
