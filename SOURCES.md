@@ -131,7 +131,7 @@ Quirks:
 |---|---|
 | Feed URL | `https://mkuran.pl/gtfs/warsaw.zip`, converted by Mikołaj Kuranowski with [WarsawGTFS](https://github.com/MKuranowski/WarsawGTFS). ZTM publishes no GTFS itself. |
 | Licence | "ZTM Warszawa Data Usage Terms (Polish) and ODbL for bus shapes", per <https://mkuran.pl/gtfs/> (read 2026-11-15). Attribution: everything in the feed's `attributions.txt`, i.e. ZTM Warszawa, Mikołaj Kuranowski and OpenStreetMap contributors. The server reads that file and repeats it in every answer. |
-| ZTM's own terms | **not read yet.** Until they are, no prebuilt Warszawa file is published. |
+| ZTM's own terms | read 2026-11-19: ZTM Warszawa's statement on the re-use of public sector information (dated 2024-08-01). Everyone may re-use it under the Act of 11 August 2021 on open data and the re-use of public sector information (Dz. U. 2023 poz. 1524), on two conditions: name the source (ZTM Warszawa) with when the information was made and obtained, and say that it was processed. The server does both: every answer names the source and its publication date (`as_of`), `detail: "full"` and `list_cities` add the retrieval date, and the credits notice says the timetables were processed. ZTM takes no responsibility for processed data. |
 | Size | 102.6 MB zip, 603 MB unpacked (the 2026-11-15 file); 31 days, 2026-11-15 .. 2026-12-15 |
 
 What the feed holds, and what the build keeps:
@@ -167,7 +167,7 @@ Kościelisko, Kuźnice and the road to Palenica Białczańska.
 **Timetable source**
 - **City lines 10–18:** 9 PDFs on <https://www.zakopane.pl/komunikacjamiejska/rozklady-jazdy>, 2.2–4.3 MB each, retrieved 2026-11-15 19:45 UTC. Each page is a single 300-ppi image with no text layer, created 2026-09-29.
 - **No other machine-readable timetable exists:** nothing in the Mobility Database or Transitland. The city's "Rozkład jazdy" page embeds rozkladzik.pl, a third-party site that was not checked.
-- **Terms:** the zakopane.pl footer says "© Zakopane. Wszystkie prawa zastrzeżone." (all rights reserved). There is no reuse statement on that site, and the town's BIP (public information bulletin) was not checked. Timetables of a municipal service are public-sector information, but the terms are unclear, so **no prebuilt Zakopane file with timetables is published**.
+- **Terms:** timetables of a municipal service are public sector information, which everyone may re-use under the Act of 11 August 2021 on open data and the re-use of public sector information (Dz. U. 2023 poz. 1524). The zakopane.pl footer says "© Zakopane. Wszystkie prawa zastrzeżone." (all rights reserved) and states no re-use conditions; the town's BIP (public information bulletin) was not checked. The transcription is not published, so **no prebuilt Zakopane file with timetables is published** for now.
 
 **How the timetable was made** (`scripts/zakopane_gtfs.py`)
 - **Two independent transcriptions:** two separate readers transcribed every page into JSON without seeing each other's work. Compared cell by cell, they agree on all **4,513** cells. The script refuses to run if they differ.

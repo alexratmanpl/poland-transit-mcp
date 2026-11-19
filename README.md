@@ -180,7 +180,7 @@ answer gets. Sizes per tool: [AGENTS.md](AGENTS.md#lean-by-default-more-on-deman
 ## Data, licences, credits
 
 - **Code** is MIT. **City files** are ODbL 1.0 (© OpenStreetMap contributors) for the map, and each timetable keeps its publisher's terms ([DATA-LICENSE.md](DATA-LICENSE.md)). No data is in git.
-- **Not cleared for redistribution:** Warszawa (ZTM Warszawa's terms not yet read), Zakopane's timetable (the city's site says "all rights reserved"; the transcription is not published, so a build gives map and walking only) and `poland` (Koleje Mazowieckie's terms not yet read; PKP PLK forbids reselling the raw data). You can build them for your own use; no prebuilt file of them will be published until that changes. Details in [DATA-LICENSE.md](DATA-LICENSE.md).
+- **Not cleared for redistribution:** Zakopane's timetable (public sector information, but the transcription is not published, so a build gives map and walking only) and `poland` (Koleje Mazowieckie's terms not yet read; PKP PLK forbids reselling the raw data). You can build them for your own use; no prebuilt file of them will be published until that changes. Details in [DATA-LICENSE.md](DATA-LICENSE.md).
 - **Timetables** are from:
   - [ZTM Gdańsk](https://www.ztm.gda.pl/otwarty_ztm)
   - [ZTP Kraków](https://gtfs.ztp.krakow.pl)

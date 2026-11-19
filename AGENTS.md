@@ -83,7 +83,7 @@ uv run poland-transit-mcp build poland --download       # trains + FlixBus; no o
 |---|---|---|---|
 | `gdansk` | pomorskie | 2 min, about 35 MB | smallest useful test city |
 | `katowice` | slaskie | 4 min, 112 MB | GZM metropolis |
-| `warszawa` | mazowieckie | 9 min, 130 MB | largest; the `city-data` workflow skips it (ZTM's terms not yet read) |
+| `warszawa` | mazowieckie | 9 min, 130 MB | largest; the `city-data` workflow does not build it yet (ZTM's terms were read 2026-11-19: re-use allowed with conditions, see SOURCES.md) |
 | `lublin` | lubelskie | 3 min (2.6 min of it downloading), 23.4 MB | buses and trolleybuses (ZDiTM) |
 | `poland` | none | 12–14 s, 14.5–20.6 MB | national layer: **no map**, only stations and timetables |
 | `krakow`, `wroclaw`, `poznan`, `torun` | małopolskie, dolnośląskie, wielkopolskie, kujawsko-pomorskie | not measured | in the `city-data` workflow's build matrix |
