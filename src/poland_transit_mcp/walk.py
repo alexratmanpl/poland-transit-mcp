@@ -44,16 +44,33 @@ class Snap:
     dist: float
 
 
+# Nodes may lie outside the city's box: the build keeps whole ways that cross its edge (up to ~0.12° out in the
+# cities built so far). Farther than this, a node is an error, and its grid would cover a needless area.
+BBOX_MARGIN = 0.5  # degrees
+MAX_GRID_CELLS = 4_000_000  # the snapping grid (Katowice, the largest area, needs ~120,000 cells)
+
+
 class WalkGraph:
     CELL = 0.002  # grid cell height in degrees (~220 m); width is 1.6× that in longitude
 
-    def __init__(self, a: GraphArrays):
+    def __init__(self, a: GraphArrays, bbox: list[float] | None = None):
+        """bbox: the city file's [min_lat, min_lon, max_lat, max_lon]; nodes must lie within it, give or take
+        BBOX_MARGIN (the build, which has no box yet, passes none)."""
         self.n = len(a.off) - 1
         coords = np.asarray(a.coords)
         if len(coords) != 2 * self.n:
             raise ValueError(f"walking graph is malformed ({len(coords)} coordinate values for {self.n} nodes); rebuild or re-download the city file")
         self.lat = (coords[0::2] / 1e6).astype(np.float32)  # float32: ~0.4 m precision, half the memory
         self.lon = (coords[1::2] / 1e6).astype(np.float32)
+        lo_lat, lo_lon, hi_lat, hi_lon = -90.0, -180.0, 90.0, 180.0
+        if bbox is not None:
+            lo_lat, lo_lon = max(lo_lat, bbox[0] - BBOX_MARGIN), max(lo_lon, bbox[1] - BBOX_MARGIN)
+            hi_lat, hi_lon = min(hi_lat, bbox[2] + BBOX_MARGIN), min(hi_lon, bbox[3] + BBOX_MARGIN)
+        outside = int(np.count_nonzero((self.lat < lo_lat) | (self.lat > hi_lat) | (self.lon < lo_lon) | (self.lon > hi_lon)))
+        if outside:
+            where = "the city's area" if bbox is not None else "the valid range"
+            raise ValueError(f"walking graph is malformed ({outside} of {self.n} nodes lie outside {where}); "
+                             "rebuild or re-download the city file")
         cost = np.asarray(a.length, np.float64) * np.where(np.asarray(a.flags) & FLAG_STEPS, STEPS_FACTOR, 1.0)
         cost = np.maximum(cost, 0.01)  # explicit zero-length edges would read as "no edge"
         self.csr = csr_matrix((cost, np.asarray(a.adj, np.int32), np.asarray(a.off, np.int32)), shape=(self.n, self.n))
@@ -68,6 +85,9 @@ class WalkGraph:
         self.g0 = (lat0, lon0)
         self.rows = int((float(self.lat.max()) - lat0) / self.CELL) + 2 if self.n else 1
         self.cols = int((float(self.lon.max()) - lon0) / (self.CELL * 1.6)) + 2 if self.n else 1
+        if self.rows * self.cols > MAX_GRID_CELLS:  # checked before the grid is allocated
+            raise ValueError(f"walking graph is malformed (it spans {self.rows} × {self.cols} grid cells, more than "
+                             f"{MAX_GRID_CELLS:,}); rebuild or re-download the city file")
         cell = self._cell(self.lat, self.lon)
         self.order = np.argsort(cell, kind="stable").astype(np.int32)
         self.cell_start = np.searchsorted(cell[self.order], np.arange(self.rows * self.cols + 1)).astype(np.int32)

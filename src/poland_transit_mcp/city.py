@@ -79,7 +79,7 @@ class City:
             if graph is None:
                 with telemetry.city_load(self.id, "graph") as s:
                     rows = dict(self.db.execute("SELECT name, data FROM blobs WHERE name LIKE 'walk_%'"))
-                    graph = self._graph = WalkGraph(GraphArrays.from_blobs(rows))
+                    graph = self._graph = WalkGraph(GraphArrays.from_blobs(rows), self.bbox)
                     s.set_attribute("poland_transit.bytes", graph.nbytes())
         return graph
 
