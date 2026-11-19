@@ -18,7 +18,8 @@ There are two packages:
 |---|---|---|
 | Now, nothing on PyPI | `uvx --from git+https://github.com/alexratmanpl/poland-transit-mcp poland-transit-mcp --data-dir DIR --no-download` (with city files you built; prebuilt files are not published yet) | Python |
 | Now, with a Rust toolchain on the machine | add `--with "poland-transit-mcp-engine @ git+https://github.com/alexratmanpl/poland-transit-mcp#subdirectory=engine"` | Rust (compiled on install, ~1 min) |
-| Engine on PyPI | add `--with poland-transit-mcp-engine` | Rust (prebuilt wheel, no toolchain) |
+| Engine source on PyPI (the first upload) | add `--with poland-transit-mcp-engine` | Rust (built from source on install: needs a Rust toolchain) |
+| Engine wheels on PyPI | add `--with poland-transit-mcp-engine` | Rust (prebuilt wheel, no toolchain) |
 | Both on PyPI | `uvx --from "poland-transit-mcp[fast]" poland-transit-mcp` | Rust |
 
 The server falls back to the Python search whenever the engine is not installed. It names the search
@@ -39,6 +40,9 @@ it uses at start-up (`search engine: rust <version>` or `python`) and in `list_c
 3. **GitHub environment.** In the repository: *Settings → Environments → New environment* `pypi`. Add yourself as a required reviewer if every upload should wait for your approval.
 
 ## Publishing the engine
+
+**The first upload is the source package only**, because the wheel workflow cannot run yet. Until wheels follow, installing `poland-transit-mcp-engine` from PyPI
+builds it from source and needs a Rust toolchain, as a git or local install does. The steps below publish the wheels.
 
 1. **Dry run.** *Actions → engine-wheels → Run workflow* with "publish" **unticked**.
    - It builds wheels for Linux (x86-64, ARM), macOS (Intel, Apple Silicon), Windows (x64), plus the source package.

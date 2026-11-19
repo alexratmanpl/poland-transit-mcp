@@ -60,8 +60,9 @@ uv run python -c "import poland_transit_engine as e; print(e.__version__)"   # �
 uv run pytest                           # all pass; the engine's tests skip without it, the Gdańsk data tests until data/cities/gdansk.sqlite exists
 ```
 
-*Measured:* the engine compiles from `engine/` in 9–15 s with warm Cargo caches (a cold cache also downloads crates; not measured). `uv.lock` is gitignored on purpose (this
-is a library and a tool, not a deployed app), so the first sync resolves the newest versions allowed by `pyproject.toml`. The package needs `mcp>=2.3,<2.4` (installed automatically; pinned to the minor version because the server adjusts SDK internals).
+*Measured:* the engine compiles from `engine/` in 9–15 s with warm Cargo caches (a cold cache also downloads crates; not measured). `uv.lock` is committed: `uv sync`
+installs the locked versions, CI uses `uv sync --locked` (it fails when `pyproject.toml` changed without `uv lock`),
+and after changing a dependency run `uv lock` and commit the new lock. The package needs `mcp>=2.3,<2.4` (installed automatically; pinned to the minor version because the server adjusts SDK internals).
 `--extra small-png` adds Pillow: map PNGs saved with a 256-colour palette, about 70% fewer bytes (a client sends a
 picture again with every later message), the same image tokens; without it a PNG is as resvg draws it.
 `pyproject.toml` maps the engine to `engine/` (`[tool.uv.sources]`): uv installs from a clone, a local path or git
@@ -369,7 +370,8 @@ files there would be served silently); builds (network, about 1 GB in `data/` fo
 | `--warm-from N` | `POLAND_TRANSIT_WARM_FROM` | days after today the warm-up starts (at least 0; default 0, today; 1 warms from tomorrow) |
 | `--max-calls N` | `POLAND_TRANSIT_MAX_CALLS` | tool calls answered at once (default 6); memory grows with each call in flight |
 | `--call-wait SECONDS` | `POLAND_TRANSIT_CALL_WAIT` | how long a call waits for a free place before it is refused with an error starting `busy:` (default 5; at least 0) |
-| `--http PORT` | | Streamable HTTP on `127.0.0.1` instead of stdio |
+| `--http PORT` | | Streamable HTTP on `127.0.0.1` instead of stdio (POST only: GET and DELETE get 405) |
+| `--max-connections N` | `POLAND_TRANSIT_MAX_CONNECTIONS` | `--http`: connections and requests served at once (default 100; more get 503); an idle connection closes after 5 s |
 | `--host ADDR` | `POLAND_TRANSIT_HOST` | the address `--http` binds to (default `127.0.0.1`; e.g. `0.0.0.0` in a container). No authentication: only on a network nothing untrusted can reach |
 | `--live gdansk` | `POLAND_TRANSIT_LIVE` | opt in to the ZTM Gdańsk real-time feed (an outbound call) |
 | | `POLAND_TRANSIT_DATA_URL` | base URL for `download` |
