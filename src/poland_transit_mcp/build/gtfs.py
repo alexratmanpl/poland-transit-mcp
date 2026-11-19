@@ -45,6 +45,43 @@ def mode_of(route_type: int) -> str:
     return "other"
 
 
+MAX_LINE = 4 << 20  # bytes in one line of a feed file (csv already refuses a field over 131,072 characters)
+MAX_FILE = 8 << 30  # bytes one feed file may unpack to
+
+
+class FeedTooLarge(ValueError):
+    """A feed file with a line or a size no real feed has (a zip bomb, say): the feed is not imported."""
+
+
+class _Capped(io.RawIOBase):
+    """A feed file's bytes, refused past MAX_LINE in one line or MAX_FILE in all. Without this, one endless line
+    is read into memory whole before the csv module sees any of it."""
+
+    def __init__(self, raw, name: str):
+        self.raw, self.name, self.total, self.run = raw, name, 0, 0  # run: bytes since the last line end
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b) -> int:
+        data = self.raw.read(min(len(b), 1 << 16))
+        n = len(data)
+        b[:n] = data
+        self.total += n
+        if self.total > MAX_FILE:
+            raise FeedTooLarge(f"{self.name} unpacks to more than {MAX_FILE >> 30} GB")
+        ends = [i for i in (data.find(b"\n"), data.find(b"\r")) if i >= 0]
+        if ends:
+            first, last = min(ends), max(data.rfind(b"\n"), data.rfind(b"\r"))
+            longest = self.run + first
+            self.run = n - last - 1
+        else:
+            longest = self.run = self.run + n
+        if max(longest, self.run) > MAX_LINE:
+            raise FeedTooLarge(f"{self.name} has a line longer than {MAX_LINE >> 20} MB")
+        return n
+
+
 class Source:
     def __init__(self, path: Path):
         self.path = Path(path)
@@ -59,8 +96,10 @@ class Source:
         if not self.has(name):
             yield iter(())
             return
+        if self.zip is not None and self.zip.getinfo(name).file_size > MAX_FILE:  # as the zip states it
+            raise FeedTooLarge(f"{name} unpacks to more than {MAX_FILE >> 30} GB")
         raw = open(self.path / name, "rb") if self.zip is None else self.zip.open(name)
-        with raw, io.TextIOWrapper(raw, encoding="utf-8-sig", newline="") as f:
+        with raw, io.TextIOWrapper(io.BufferedReader(_Capped(raw, name)), encoding="utf-8-sig", newline="") as f:
             reader = csv.reader(f)
             header = [h.strip() for h in next(reader, [])]
             yield (dict(zip(header, map(str.strip, row))) for row in reader if row)
@@ -126,7 +165,28 @@ def _next(db: sqlite3.Connection, col: str, table: str) -> int:
 def import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGraph | None = None,
                 log: Log = lambda *a: None, download_meta: dict | None = None) -> dict:
     """Imports one feed. Ids are namespaced with the feed key so several feeds can be merged.
-    Returns the feed's metadata (status, validity, dates) for the city file's meta table."""
+    Returns the feed's metadata (status, validity, dates) for the city file's meta table. A feed file no real
+    feed has (FeedTooLarge) leaves nothing of the feed behind, and the feed is reported as broken."""
+    db.execute("SAVEPOINT import_feed")
+    try:
+        meta = _import_feed(db, path, feed, snapper, log, download_meta)
+    except FeedTooLarge as e:
+        db.execute("ROLLBACK TO import_feed")
+        db.execute("RELEASE import_feed")
+        log(f"GTFS {feed.key}: {e}; not imported")
+        meta = {"key": feed.key, "name": feed.name, "url": feed.url, "licence": feed.licence,
+                "attribution": feed.attribution}
+        meta.update(download_meta or {}, url=feed.url, status=f"broken ({e})")
+        return meta
+    except BaseException:
+        db.execute("RELEASE import_feed")  # as before: what was imported stays, and the error goes on
+        raise
+    db.execute("RELEASE import_feed")
+    return meta
+
+
+def _import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGraph | None,
+                 log: Log, download_meta: dict | None) -> dict:
     meta = {"key": feed.key, "name": feed.name, "url": feed.url, "licence": feed.licence,
             "attribution": feed.attribution, "status": "missing"}
     path = Path(path)

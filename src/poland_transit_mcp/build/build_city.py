@@ -561,7 +561,7 @@ def main(argv: list[str] | None = None) -> None:
     ga = b.highways(hw_json)
     for k, v in ga.blobs().items():
         db.execute("INSERT INTO blobs(name, data) VALUES (?, ?)", (k, v))
-    graph = WalkGraph(ga)
+    graph = WalkGraph(ga, list(city.bbox))
     log("loading features")
     b.features(feat_json)
     log(f"features: {b.feature_id}")

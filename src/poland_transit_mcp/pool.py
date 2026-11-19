@@ -25,7 +25,10 @@ from __future__ import annotations
 import gc
 import sys
 import threading
+import time
 from collections import OrderedDict
+from contextlib import contextmanager
+from functools import partial
 
 from . import engine, telemetry
 from .city import City
@@ -38,11 +41,12 @@ def log(*a) -> None:
 
 
 OVERHEAD_MB = 150 if LARGE_FREES_RETURNED else 230
+DAY_WAIT_S = 5.0  # the longest a call waits for room before it builds a date anyway (CityPool._reserving_day)
 
 
 class CityPool:
     def __init__(self, cities: dict[str, City], budget_mb: float, overhead_mb: float = OVERHEAD_MB,
-                 days_kept: int = 2):
+                 days_kept: int = 2, day_wait_s: float = DAY_WAIT_S):
         if days_kept < 1:
             raise ValueError("days_kept must be at least 1")
         self.cities = cities
@@ -51,9 +55,14 @@ class CityPool:
         self.days_kept = days_kept  # dates each city's timetable keeps built
         for c in cities.values():
             c.keep_days(days_kept)
+            c.reserve_day = partial(self._reserving_day, c)
+        self.day_wait_s = day_wait_s
+        self._reserved = 0  # expected size of the dates being built
+        self._builders = 0  # calls in flight that have built a date (or are building one)
         self._recent: OrderedDict[str, None] = OrderedDict()  # least recently used first
         self._pins: dict[str, int] = {}
         self._lock = threading.RLock()
+        self._room = threading.Condition(self._lock)  # notified when a call ends
         self._local = threading.local()
 
     # dict-like access to the open cities
@@ -71,6 +80,41 @@ class CityPool:
 
     def loaded_bytes(self) -> int:
         return int(1.05 * sum(c.heavy_bytes() for c in self.cities.values()))
+
+    @contextmanager
+    def _reserving_day(self, c: City):
+        """Around the build of a date of city c: its expected size (as large as the last date it built, else
+        from its file size) is counted while it is built, after making room for it as for a city that loads.
+
+        A date a call holds stays in memory until the call ends, even once the cache has dropped it, so calls
+        on several new dates at once would each hold one, past the budget. So when the date does not fit and
+        other calls in flight have built dates, this call waits until they end (at most day_wait_s), then
+        builds it anyway: the budget stays a target, and one call at a time never waits. It does not wait when
+        the budget cannot hold even the cities this call uses, each with one date. A call waits only before
+        its first date, so a call that holds one never waits for another that does."""
+        last = c.last_day_bytes()
+        need = int(1.05 * last) if last is not None else self.expected_bytes(c, 2) - self.expected_bytes(c)
+        with self._room:
+            pinned = set(self.pinned_here())
+            if getattr(self._local, "building", False) or not pinned:  # (not pinned: outside a call)
+                self._enforce(incoming=need)
+            else:
+                floor = sum(self.expected_bytes(self.cities[cid]) for cid in pinned)
+                deadline = time.monotonic() + (self.day_wait_s if floor <= self.budget else 0)
+                while True:
+                    self._enforce(incoming=need)
+                    left = deadline - time.monotonic()
+                    if not self._builders or left <= 0 or self.loaded_bytes() + self._reserved + need <= self.budget:
+                        break
+                    self._room.wait(left)
+                self._local.building = True
+                self._builders += 1
+            self._reserved += need
+        try:
+            yield
+        finally:
+            with self._room:
+                self._reserved -= need
 
     def use(self, cid: str) -> City:
         """The city for this call: marked most recently used and pinned until release()."""
@@ -122,7 +166,11 @@ class CityPool:
             for cid in getattr(self._local, "pinned", None) or []:
                 self._pins[cid] -= 1
             self._local.pinned = []
+            if getattr(self._local, "building", False):
+                self._local.building = False
+                self._builders -= 1
             self._enforce()
+            self._room.notify_all()
 
     def _enforce(self, incoming: int = 0) -> None:
         """Back within the budget: first the cached dates of unpinned cities (least recently used city
@@ -131,6 +179,7 @@ class CityPool:
         cities. A date costs well under a second to build again, a city seconds. A pinned city's dates go
         too because overlapping calls can keep a city pinned for as long as they keep coming: it would
         otherwise grow to `days_kept` dates whatever the budget. A call holding a dropped date finishes on it."""
+        incoming += self._reserved
         total = self.loaded_bytes() + incoming
         if total <= self.budget:
             return

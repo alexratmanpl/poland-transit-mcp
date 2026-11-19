@@ -57,6 +57,7 @@ class City:
         self._tt: Timetable | None = None
         self._stop_nodes: dict[int, list[Stop]] | None = None
         self.days_kept = 2  # dates each timetable keeps built (CityPool sets it; it holds across unloads)
+        self.reserve_day = None  # CityPool sets it: makes room in the memory budget before a date is built
         # calls arriving together at an unloaded city load each part once, not once per call
         self._graph_lock = threading.Lock()
         self._tt_lock = threading.Lock()
@@ -83,7 +84,7 @@ class City:
             if graph is None:
                 with telemetry.city_load(self.id, "graph") as s:
                     rows = dict(self.db.execute("SELECT name, data FROM blobs WHERE name LIKE 'walk_%'"))
-                    graph = self._graph = WalkGraph(GraphArrays.from_blobs(rows))
+                    graph = self._graph = WalkGraph(GraphArrays.from_blobs(rows), self.bbox)
                     s.set_attribute("poland_transit.bytes", graph.nbytes())
         return graph
 
@@ -96,7 +97,8 @@ class City:
             tt = self._tt
             if tt is None:
                 with telemetry.city_load(self.id, "timetable") as s:
-                    tt = self._tt = Timetable(self.db, city_id=self.id, days_kept=self.days_kept)
+                    tt = self._tt = Timetable(self.db, city_id=self.id, days_kept=self.days_kept,
+                                              reserve_day=self.reserve_day)
                     s.set_attribute("poland_transit.stops", tt.n_stops)
         return tt
 

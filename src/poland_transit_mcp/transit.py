@@ -122,16 +122,16 @@ def resolve_stops(city: City, ref: str) -> list[Stop]:
                                          if f'{f["key"]}:{ref}' in tt.stop_by_id), None)
     if s:
         return [s]
-    n = fold(ref)
-    found = [s for s in tt.stops if s and fold(s.name) == n]  # exact name first ("Dworzec st. 17")
+    n = fold(ref)  # names come from the timetable's index of folded names, not a scan of every stop
+    found = tt.stops_named(n)  # exact name first ("Dworzec st. 17")
     if not found and len(n) > 3 and n[-3] == " " and n[-2:].isdigit():
         n = n[:-3]  # "Oliwa PKP 02": the feed's platform number is split off the stored name
-    found = found or [s for s in tt.stops if s and fold(s.name) == n] or [s for s in tt.stops if s and fold(s.name).startswith(n)]
+    found = found or tt.stops_named(n) or tt.stops_named_from(n)
     names = sorted({s.name for s in found})
     if len(names) > 1:
         raise Refused(f'{quoted(ref)} matches several stops: {", ".join(names[:8])}; pass one of these names')
     if not found and len(n) >= 4:  # "Bagatela" is the stop "Teatr Bagatela": name it, so the next call is the right one
-        within = sorted({s.name for s in tt.stops if s and n in fold(s.name)})
+        within = sorted(tt.names_containing(n))
         if within:
             raise Refused(f'no stop named {quoted(ref)} in {city.id}; stops with that in their name: '
                           f'{", ".join(within[:8])}; pass one of these names')
