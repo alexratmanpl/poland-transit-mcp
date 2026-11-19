@@ -13,6 +13,6 @@ uvx --from "/path/to/poland-transit-mcp[fast]" poland-transit-mcp --data-dir /pa
 # or, for development:  uv sync --extra dev --extra fast
 ```
 
-Whole `plan_trip` calls are 2.3–3.4× faster (total time over 100 plans on an Apple Silicon Mac), not 20×: the 20× is the search step alone. See the main README.
+Whole `plan_trip` calls are 2.3–3.4× faster (total time over 100 plans on an Apple Silicon Mac), not 20×: the 20× is the search step alone. See [docs/ENGINE.md](https://github.com/alexratmanpl/poland-transit-mcp/blob/main/docs/ENGINE.md) in the main repository.
 
 Licence: MIT.

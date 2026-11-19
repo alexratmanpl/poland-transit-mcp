@@ -88,7 +88,7 @@ can reach belongs behind something that terminates client connections:
 ### Model clients and token cost
 
 How many tokens a model spends depends on how its client calls the tools, not on the server's security. Answers
-are lean by default (`detail="full"` adds geometry and ids; AGENTS.md, "Lean by default, more on demand"). A client
+are lean by default (`detail="full"` adds geometry and ids; [docs/TOOLS.md](docs/TOOLS.md#lean-by-default-more-on-demand)). A client
 that chains many calls can spend fewer tokens with the "code mode" pattern (for example Cloudflare's Code Mode
 for agents): the client turns each tool's declared input and output schema into a typed API, the model writes code
 against it in a sandbox, and only the final result returns to the model, not every intermediate answer. Every tool

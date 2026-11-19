@@ -116,7 +116,7 @@ Layer = Literal["water", "parks", "streets_major", "streets_minor", "paths", "ra
 
 def Detail(adds: str) -> Any:  # noqa: N802 - used where a type goes, like the other argument types
     """The `detail` argument of one tool: what `full` adds there and how much larger the answer gets (measured on
-    real data; AGENTS.md has the table). Every tool with `detail` has the same two values."""
+    real data; docs/TOOLS.md has the table). Every tool with `detail` has the same two values."""
     return Annotated[Literal["summary", "full"], Field(description=f"full adds {adds}")]
 
 

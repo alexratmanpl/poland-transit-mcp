@@ -17,7 +17,7 @@ uv run python scripts/smoke.py        # if you have city data built
 
 ## Adding or changing a tool
 
-Every tool follows one rule ([AGENTS.md](AGENTS.md#lean-by-default-more-on-demand) has it in full):
+Every tool follows one rule ([docs/TOOLS.md](docs/TOOLS.md#lean-by-default-more-on-demand) has it in full):
 
 - The default answer holds what a person asking the question needs, complete enough that the usual question takes
   one call, and keeps every id another tool takes as input.
@@ -30,7 +30,9 @@ Every tool follows one rule ([AGENTS.md](AGENTS.md#lean-by-default-more-on-deman
 - Every argument has a description. Where one call can grow several times, the description says by how much, in
   relative terms ("2 to 3 times larger"), measured on real data, never as a price per row or in tokens.
 - `tests/test_contract_answer_rule.py` checks the rule, and the size of what a model loads; after a deliberate
-  change to `tools/list`, review the golden copy's diff (`POLAND_TRANSIT_GOLDEN=update`).
+  change to `tools/list`, review the golden copy's diff (`POLAND_TRANSIT_GOLDEN=update`), and regenerate the
+  reference in [docs/TOOLS.md](docs/TOOLS.md) with `uv run python scripts/gen_tools_doc.py` (`tests/test_tools_doc.py`
+  fails until you do).
 
 ## Adding a city or a feed
 

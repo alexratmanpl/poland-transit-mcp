@@ -3,9 +3,25 @@
 Trips from a place in one city to a place in another, by train or coach, with city transport at both
 ends. Numbers are *measured* (2026-11-16) unless marked *estimated*.
 
+Add the national layer `poland` (trains of 13 operators and FlixBus coaches) to `--cities` and give `plan_trip` a
+`to_city`. A real answer, trimmed (Kraków Rynek Główny → Krupówki, Zakopane, Tuesday 08:00):
+
+```text
+08:33 → 11:33  walk 17 min to Kraków Główny
+               IC 1312/3 Malinowski (PKP Intercity) 08:56 platform 3, track 2 → Zakopane 11:22 platform 2, track 3
+               walk 3 min, bus 10 (Zakopane city buses) 11:30 → Krupówki 11:33
+09:51 → 12:38  EIC 1350/1 Tatry 10:14 → 12:17, walk 16 min
+11:22 → 14:06  FlixBus 1257A from Krakow MDA Bus Station 11:45 → Zakopane Bus Station 13:45, walk 16 min
+note: the private Kraków–Zakopane minibuses publish no open timetables and are not included
+```
+
+The Zakopane bus leg comes from a local transcription of the city's PDF timetables, which is not published
+(see [DATA-LICENSE.md](../DATA-LICENSE.md)); your own build gives the walk instead. With three large cities plus
+`poland`, give the server `--memory-budget 700`.
+
 ## What was built
 
-- **`poland.sqlite`** (`poland-transit-mcp build poland --download`): the Polish Trains GTFS and FlixBus's European feed cut to the trips that serve Poland (whole, as far as their stops keep Polish time). 14.5 MB and 12 s to build in the run measured here (its size varies with the day's feeds; another build was 20.6 MB), no OSM. See [SOURCES.md](../SOURCES.md) for what each feed holds and what the build changes.
+- **`poland.sqlite`** (`poland-transit-mcp build poland --download`): the Polish Trains GTFS and FlixBus's European feed cut to the trips that serve Poland (whole, as far as their stops keep Polish time). 14.5 MB and 12 s to build in the run measured here (12–14 s over several builds) (its size varies with the day's feeds; another build was 20.6 MB), no OSM. See [SOURCES.md](../SOURCES.md) for what each feed holds and what the build changes.
 - **Pseudo-city `poland`:**
   - `departures` at a station, with train, category, platform and track.
   - `line_info` for a line, or a train by number or name.

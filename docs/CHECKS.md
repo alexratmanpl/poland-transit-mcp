@@ -336,7 +336,7 @@ Checked on 2026-11-16.
 
 **Speed, in process** (`compare_engines.py`, the same 100 plans per city on both engines, `plan_trip` time without the MCP transport).
 
-On the 4-vCPU cloud VM used for "Weight" above (the README chart, `docs/engine-speed.svg`, shows these p95 values):
+On the 4-vCPU cloud VM used for "Weight" above (the chart in [ENGINE.md](ENGINE.md), `docs/engine-speed.svg`, shows these p95 values):
 
 | City | Python p50 / p95 | Rust p50 / p95 |
 |---|---|---|
@@ -368,7 +368,7 @@ On an Apple Silicon Mac, 2026-11-17: `scripts/compare_engines.py --cities gdansk
 - A warm-up that preloaded a second large city while queries ran pushed the peak to 574–575 MB. Warm-up now preloads a city only if its expected size fits.
 
 **Packaging, in clean environments.**
-- **CI jobs replayed** from a clean checkout (`git worktree`) on 2026-11-16, with the test suite of that day (it has grown since; current counts are in the README):
+- **CI jobs replayed** from a clean checkout (`git worktree`) on 2026-11-16, with the test suite of that day (it has grown since):
   - The plain job, with no Rust on `PATH`, uses the Python search: 50 passed, 7 skipped.
   - The engine job (`uv sync --extra fast`) compiles the engine from `engine/`: 52 passed, 5 skipped.
 - **One real problem found and fixed.** The `[fast]` extra made `uv sync` fail while the engine is not on PyPI, because uv resolves every extra. `tool.uv.sources` now points the engine at `engine/` for development.
