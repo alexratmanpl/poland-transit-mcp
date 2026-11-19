@@ -2,6 +2,11 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- **One release workflow for both packages.** `engine-wheels.yml` is now `release.yml`: it also builds the server (`poland-transit-mcp`), publishes only from a release tag that matches the server's version, and uploads both packages with PyPI Trusted Publishing after a maintainer approves the `pypi` environment. Files PyPI already has for a version are skipped, so a release first uploaded by hand gets the engine's wheels added. docs/PUBLISHING.md describes the one-time setup (a trusted publisher per package) and the steps.
+
 ## 0.5.5 - 2026-11-19
 
 ### Changed

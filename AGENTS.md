@@ -234,7 +234,7 @@ uv run python scripts/measure.py --cities gdansk --trips 50    # Linux only: it 
   [docs/INTERCITY.md](docs/INTERCITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
 - **Git:** never commit `data/`, `.venv/`, `.mcp.json`, `*.sqlite`, `*.pbf`, `*.zip` (all gitignored). Open PRs
   against the default branch.
-- **CI:** `test.yml` (Python 3.11/3.13, with and without the engine), `engine-wheels.yml` (wheels; PyPI publish
+- **CI:** `test.yml` (Python 3.11/3.13, with and without the engine), `release.yml` (both packages, engine wheels for every platform; PyPI publish
   is manual), `city-data.yml` (data build; manual until the `data-latest` release exists, then weekly).
 - **Security posture:** read-only tools; data files and upstream feeds are the one trust boundary
   (so: do not point `--from` / `POLAND_TRANSIT_DATA_URL` at untrusted hosts, and do not load city files you

@@ -383,7 +383,7 @@ On an Apple Silicon Mac, 2026-11-17: `scripts/compare_engines.py --cities gdansk
   | `--with ./engine`, compiled from source | rust 0.1.0 | same |
 
 - **Workflows:** `actionlint` passed on the workflows as they were on 2026-11-16. `city-data.yml` has changed since (its build check) and was only checked as valid YAML.
-- **Not checked:** the macOS and Windows wheels, which can only be built on those systems (`engine-wheels.yml` dry run).
+- **Not checked:** the macOS and Windows wheels, which can only be built on those systems (`release.yml` dry run).
 
 ## Memory budget for an MCP entry with Gdańsk, Warszawa and Katowice
 

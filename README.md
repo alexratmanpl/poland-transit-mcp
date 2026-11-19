@@ -78,7 +78,7 @@ Arguments, declared answer fields, errors and answer sizes: **[docs/TOOLS.md](do
 | [docs/SCALING.md](docs/SCALING.md) | what each city costs, memory budget, what runs on what hardware |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | opt-in OpenTelemetry traces and metrics |
 | [docs/CHECKS.md](docs/CHECKS.md) | accuracy against operators' timetables, speed and memory measurements |
-| [docs/PUBLISHING.md](docs/PUBLISHING.md) | the optional PyPI step |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | releasing both packages to PyPI (one workflow, Trusted Publishing) |
 | [SECURITY.md](SECURITY.md) | what the server trusts, running it for others, reporting a vulnerability |
 | [SOURCES.md](SOURCES.md) · [DATA-LICENSE.md](DATA-LICENSE.md) | every feed with its credits · data licences and redistribution |
 | [DECISIONS.md](DECISIONS.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) | design choices · contributing · releases |

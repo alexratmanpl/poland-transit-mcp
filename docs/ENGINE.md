@@ -37,9 +37,9 @@ flowchart LR
 
 - From a clone: `uv sync --extra dev --extra fast` (needs a Rust toolchain; see [AGENTS.md](../AGENTS.md), step 3).
 - With `uvx`: `--with ./engine` from a clone, or `--with "poland-transit-mcp-engine @ git+…#subdirectory=engine"`.
-- The first upload of `poland-transit-mcp-engine` to PyPI is its source only, so `--with poland-transit-mcp-engine`
-  from PyPI also builds it from source and needs a Rust toolchain, until prebuilt wheels are published. Publishing
-  is an optional, manual step: [PUBLISHING.md](PUBLISHING.md).
+- The release workflow publishes prebuilt engine wheels (Linux, macOS, Windows) with each release. A release
+  uploaded by hand has the engine's source only, so `--with poland-transit-mcp-engine` then builds it from source
+  and needs a Rust toolchain until the workflow adds the wheels: [PUBLISHING.md](PUBLISHING.md).
 - The server prints the search it uses at start (`search engine: rust <version>` or `python`) and reports it in
   `list_cities`. `POLAND_TRANSIT_ENGINE=python` forces the Python search.
 - Compare both on your data: `uv run python scripts/compare_engines.py --cities gdansk --plans 100`.
