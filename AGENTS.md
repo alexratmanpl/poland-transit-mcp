@@ -371,7 +371,7 @@ files there would be served silently); builds (network, about 1 GB in `data/` fo
 | `--max-calls N` | `POLAND_TRANSIT_MAX_CALLS` | tool calls answered at once (default 6); memory grows with each call in flight |
 | `--call-wait SECONDS` | `POLAND_TRANSIT_CALL_WAIT` | how long a call waits for a free place before it is refused with an error starting `busy:` (default 5; at least 0) |
 | `--http PORT` | | Streamable HTTP on `127.0.0.1` instead of stdio (POST only: GET and DELETE get 405) |
-| `--max-connections N` | `POLAND_TRANSIT_MAX_CONNECTIONS` | `--http`: connections and requests served at once (default 100; more get 503); an idle connection closes after 5 s |
+| `--max-connections N` | `POLAND_TRANSIT_MAX_CONNECTIONS` | `--http`: an opt-in cap on open connections (default: none). It counts idle connections too, so past it every request gets 503: use it only behind a gateway (SECURITY.md, "Connection floods"). An idle connection closes 5 s after a reply |
 | `--host ADDR` | `POLAND_TRANSIT_HOST` | the address `--http` binds to (default `127.0.0.1`; e.g. `0.0.0.0` in a container). No authentication: only on a network nothing untrusted can reach |
 | `--live gdansk` | `POLAND_TRANSIT_LIVE` | opt in to the ZTM Gdańsk real-time feed (an outbound call) |
 | | `POLAND_TRANSIT_DATA_URL` | base URL for `download` |

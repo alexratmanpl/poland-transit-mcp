@@ -2,6 +2,11 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- **No cap on HTTP connections by default.** 0.5.4's default cap of 100 counted every open connection, also one that had not sent a request yet, so about 100 silent sockets turned every call away with 503: a cheaper flood than before. `--max-connections N` stays, opt-in, for a server behind a gateway. SECURITY.md has a new section on connection floods (one process only bounds them; a shared `--http` belongs behind a buffering proxy or gateway) and a note on model clients' token cost (the "code mode" pattern).
+
 ## 0.5.4 - 2026-11-19
 
 ### Security

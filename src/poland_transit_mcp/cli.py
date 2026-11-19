@@ -105,10 +105,10 @@ def serve(argv: list[str]) -> None:
                          "authentication: bind another address, e.g. 0.0.0.0 in a container, only on a network that "
                          "nothing untrusted can reach")
     ap.add_argument("--max-connections", type=at_least(1), metavar="N",
-                    default=os.environ.get("POLAND_TRANSIT_MAX_CONNECTIONS") or str(DEFAULT_MAX_CONNECTIONS),
-                    help=f"--http: connections and requests served at once (default {DEFAULT_MAX_CONNECTIONS}); "
-                         "past it a request is answered 503, and an idle connection is closed after "
-                         f"{KEEP_ALIVE_S} s")
+                    default=os.environ.get("POLAND_TRANSIT_MAX_CONNECTIONS") or DEFAULT_MAX_CONNECTIONS,
+                    help="--http: a cap on open connections (default: none). It counts idle connections too, so "
+                         "past it every request is answered 503; put a shared server behind a gateway instead "
+                         f"(SECURITY.md). A connection idle for {KEEP_ALIVE_S} s after a reply is closed")
     ap.add_argument("--live", default=os.environ.get("POLAND_TRANSIT_LIVE", ""), help="opt in to live departures, e.g. gdansk")
     ap.add_argument("--no-download", action="store_true", help="never fetch missing city files")
     ap.add_argument("--memory-budget", type=float, metavar="MB",
