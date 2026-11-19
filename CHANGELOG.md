@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.3 - 2026-11-19
 
 ### Changed
 - **Warszawa's terms read; Zakopane's basis named.** ZTM Warszawa's timetables are public sector information that anyone may re-use under the Polish Act of 11 August 2021 on open data, on two conditions: name the source with when the data was made and obtained, and say it was processed. The server already does both (each answer's `as_of` and credits; the retrieval date with `detail: "full"` and in `list_cities`; the credits notice). Warszawa's credit text now states those conditions, and the docs mark a Warszawa file as redistributable with them (bus shapes stay ODbL). Zakopane's credit text names the same act; its transcription stays unpublished. The texts are stored in a city file when it is built, so they show after the next build.
