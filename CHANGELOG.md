@@ -2,6 +2,15 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- **Station names cost the same whatever the size of the timetable.** A stop or station name was matched by folding every stop's name up to three times, so a `plan_stations` call with 20 + 20 names took seconds of CPU on a large national layer. The timetable now keeps an index of folded names (and their sorted list for prefix matches), built when it loads: 40 names on 40,000 stops take 0.1 ms instead of 3.5 s, with the same matches, order and messages.
+- **Calls on several new dates at once stay nearer the memory budget.** Dates held by calls in flight are now counted until those calls end, a date's expected size is reserved before it is built, and a call that would pass the budget while other calls hold dates waits for them (at most 5 s) before it builds its first date. Six calls on six dates of a synthetic national layer at a 480 MB budget: peak 754 → 565 MB resident with the Python search, 829 → 642 MB with the Rust engine, in the same time ([docs/SCALING.md](docs/SCALING.md#dates-kept-per-city)).
+- **Walking graphs with nodes far outside the city are refused.** A node more than 0.5° outside the file's box (or off the globe), or a snapping grid over 4 million cells, now fails with the usual "walking graph is malformed … rebuild or re-download" error, instead of a grid large enough to get the process killed.
+- **The live feed has one deadline per call.** Its 2.5 s timeout applied to each read, so a slow upstream could hold a call for 20 s or more; now the whole fetch of a call's stops takes at most 2.5 s, at most 24 live fetches run at once, and stop ids from the feed are URL-quoted.
+- **GTFS import refuses endless lines and oversized files.** A feed file with a line over 4 MB or over 8 GB unpacked (a zip bomb: 1.2 MB holding one 1.2 GB line got the build killed) is reported as broken and nothing of that feed is kept.
+
 ## 0.5.3 - 2026-11-19
 
 ### Changed
