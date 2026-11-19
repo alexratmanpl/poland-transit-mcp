@@ -36,7 +36,7 @@ jobs:
           name: wheels-linux-${{ matrix.target }}
           path: engine/dist
   macos:
-    runs-on: macos-14
+    runs-on: macos-15  # Apple Silicon; the x86_64 wheel is cross-built (macos-14 images are retired)
     strategy:
       matrix:
         target: [x86_64, aarch64]
