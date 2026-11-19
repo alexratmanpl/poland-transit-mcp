@@ -3,6 +3,31 @@
 Every source used to build the city files, checked on **2026-11-14** (Wrocław on 2026-11-15, Lublin on 2026-11-17). Sizes are the downloaded
 files. Measured with `curl -D` headers and `ls -l`. Licences are as stated by the publisher.
 
+## Credits at a glance
+
+- **Map:** © OpenStreetMap contributors (ODbL 1.0).
+- **Timetables:** [ZTM Gdańsk](https://www.ztm.gda.pl/otwarty_ztm), [ZTP Kraków](https://gtfs.ztp.krakow.pl),
+  [UM Wrocław](https://open-data.cui.wroclaw.pl), [ZTM Poznań](https://www.ztm.poznan.pl/otwarte-dane/dla-deweloperow/),
+  [ZTM Warszawa](https://ztm.waw.pl), [ZTM GZM](https://otwartedane.metropoliagzm.pl), Gmina Miasta Toruń and
+  MZK Toruń, [ZDiTM Lublin](https://www.zdtm.lublin.eu), and
+  [Gmina Miasto Zakopane](https://www.zakopane.pl/komunikacjamiejska/rozklady-jazdy) (PDF timetables, transcribed
+  and checked twice).
+- **Trains:** [PKP Polskie Linie Kolejowe S.A.](https://www.plk-sa.pl/klienci-i-kontrahenci/api-otwarte-dane) open
+  railway data, and Koleje Mazowieckie.
+- **Coaches:** FlixBus, via [transport.data.gouv.fr](https://transport.data.gouv.fr/datasets/flixbus-horaires-theoriques-du-reseau-europeen-1)
+  (ODbL), mirrored by the [Mobility Database](https://mobilitydatabase.org).
+- **GTFS conversions** of Warszawa, Katowice, Toruń, Lublin and the Polish trains: **Mikołaj Kuranowski**,
+  [mkuran.pl/gtfs](https://mkuran.pl/gtfs/) ([WarsawGTFS](https://github.com/MKuranowski/WarsawGTFS)).
+- **Feeds found via** the [Mobility Database](https://mobilitydatabase.org) and
+  [Transitland](https://github.com/transitland/transitland-atlas).
+- **Built with** [osmium-tool](https://osmcode.org/osmium-tool/), the
+  [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk), [NumPy](https://numpy.org),
+  [SciPy](https://scipy.org), [PyO3](https://pyo3.rs), [OpenTelemetry](https://opentelemetry.io),
+  [resvg](https://github.com/linebender/resvg) (map PNGs, MIT) and, optionally,
+  [Pillow](https://python-pillow.github.io) (smaller PNGs, MIT-CMU).
+
+What may be redistributed, and the credit each source requires: [DATA-LICENSE.md](DATA-LICENSE.md).
+
 ## Map data: OpenStreetMap
 
 | | |

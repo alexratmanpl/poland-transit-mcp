@@ -26,8 +26,8 @@ trust boundary is **data files and upstream feeds**:
   `localhost`) the Host and Origin headers must name a loopback address, which stops DNS rebinding; on any other
   address that check is off (the server cannot know the gateway's name) and the server warns at start.
 - **`--http` answers POST only.** Each reply comes in the POST's own response, so GET and DELETE on `/mcp` are
-  answered 405 and no idle stream is held open. At most `--max-connections` connections and requests (default 100)
-  are served at once (more get 503), and a connection idle for 5 s is closed.
+  answered 405 and no idle stream is held open. A connection idle for 5 s after a reply is closed. There is no cap
+  on open connections by default (see "Connection floods" below).
 - **Tool answers contain third-party text** (OpenStreetMap names, feed descriptions). Clients and models should
   treat it as data, never as instructions.
 - **`--live gdansk`** makes outbound requests to ZTM Gdańsk. It is off by default. It has one 2.5 s deadline per
@@ -47,8 +47,8 @@ a refused Host or Origin header. uvicorn's access log, on by default, still show
 
 The server has no authentication, rate limit or time limit per call, and a call runs to its end even when the
 client disconnects. What it does limit: tool calls answered at once (`--max-calls`, default 6; a call that finds no
-free place within `--call-wait` seconds is refused as `busy:`) and HTTP connections at once (`--max-connections`).
-Before anyone outside your machine can reach it (`--http` behind a gateway), the gateway must add:
+free place within `--call-wait` seconds is refused as `busy:`). Before anyone outside your machine can reach it,
+put `--http` behind a gateway, and let the gateway add:
 
 - **authentication** of every caller;
 - **a rate limit** per caller;
@@ -59,8 +59,41 @@ Before anyone outside your machine can reach it (`--http` behind a gateway), the
 - **a body limit near 64 kB** (a normal call is under 2 kB, the largest, `plan_stations` with 40 stations at their longest, about 10 kB; the
   server itself accepts up to 4 MB).
 
+- **the client connections themselves**: the gateway holds them, reads each request in full, and opens its own
+  connection to the server only to send a complete one (see below).
+
 The server answers at most `--max-calls` tool calls at once; a PNG holds Python's lock while it is drawn, so a few
 large maps slow every other call down.
+
+### Connection floods
+
+One process can make a connection flood more expensive, not stop it. What the server does:
+
+- a connection that stays idle for 5 s after a reply is closed;
+- GET and DELETE on `/mcp` get 405, so no long-lived stream is ever held for a caller;
+- **no cap on open connections by default.** uvicorn's cap (`--max-connections N`, opt-in) counts every open
+  connection, also one that has not sent a request yet, so about N silent or slow-header sockets make every call get
+  503 until they close. Without the cap, a flood needs about as many sockets as the process may open files (its
+  `nofile` limit: often 256 on macOS, 1,024 on Linux), after which new connections fail. Set the cap only behind a gateway that
+  already limits connections per caller.
+
+A connection that never completes its first request is not closed by the server. So a server that anyone else
+can reach belongs behind something that terminates client connections:
+
+- **a buffering reverse proxy** (nginx, Caddy, HAProxy) or **a gateway in front of it** (a cloud load balancer, a
+  Cloudflare Worker or Tunnel, an API gateway): it holds slow and idle clients itself, applies the limits above per
+  caller, and sends the server only complete requests over a few connections of its own;
+- **the server on a private address only** (loopback, or a container network), reachable through that gateway alone.
+
+### Model clients and token cost
+
+How many tokens a model spends depends on how its client calls the tools, not on the server's security. Answers
+are lean by default (`detail="full"` adds geometry and ids; [docs/TOOLS.md](docs/TOOLS.md#lean-by-default-more-on-demand)). A client
+that chains many calls can spend fewer tokens with the "code mode" pattern (for example Cloudflare's Code Mode
+for agents): the client turns each tool's declared input and output schema into a typed API, the model writes code
+against it in a sandbox, and only the final result returns to the model, not every intermediate answer. Every tool
+here declares an `outputSchema`, which is what that pattern needs. The gateway above is still needed for the
+server's protection: code mode changes how a model uses the tools, not who can open connections.
 
 ## Known open items
 

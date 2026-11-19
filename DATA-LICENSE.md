@@ -13,14 +13,14 @@ Attribution: **© OpenStreetMap contributors** — <https://www.openstreetmap.or
 
 If you redistribute a city file, or a database derived from one, keep this attribution and
 offer it under the ODbL. Every answer from the server already carries the attribution in its
-`source` field.
+`credits` field (full text from the `credits` tool).
 
 ## Timetable data inside the city files
 
 The city files also contain public-transport timetables from each operator's GTFS feed. Those
 feeds have their own licences and credit requirements, and these continue to apply to the
 timetable content. Every server response names the feed it used, together with its publication
-and retrieval dates (`source`, `as_of`).
+and retrieval dates (`credits`, `as_of`).
 
 | City | Feed | Licence | Required credit | Prebuilt file may be published |
 |---|---|---|---|---|

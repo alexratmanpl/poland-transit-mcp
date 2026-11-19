@@ -148,6 +148,28 @@ def test_http_binds_loopback_unless_told_otherwise(tmp_path, monkeypatch, capsys
     assert [(c.max_calls, c.wait_s) for c in limits] == [(6, 5)]  # the limit on calls at once (default)
 
 
+def test_no_connection_cap_by_default_and_one_when_asked(tmp_path, monkeypatch):
+    """A cap counts idle connections too (a few silent sockets would turn every call away with 503), so none is set
+    unless the operator asks for one."""
+    from fixture import build_fixture
+
+    from poland_transit_mcp import cli, server, web
+    assert web.DEFAULT_MAX_CONNECTIONS is None
+    runs = []
+    monkeypatch.setattr(web, "run", lambda srv, host, port, max_connections: runs.append(max_connections))
+    monkeypatch.setattr(server, "create_server", lambda pool, calls: object())
+    monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
+    monkeypatch.delenv("POLAND_TRANSIT_MAX_CONNECTIONS", raising=False)
+    monkeypatch.delenv("POLAND_TRANSIT_HOST", raising=False)
+    build_fixture(tmp_path)
+    base = ["--data-dir", str(tmp_path), "--cities", "testowo", "--no-download", "--http", "8080"]
+    cli.main(base)
+    cli.main([*base, "--max-connections", "500"])
+    monkeypatch.setenv("POLAND_TRANSIT_MAX_CONNECTIONS", "300")
+    cli.main(base)
+    assert runs == [None, 500, 300]
+
+
 def test_one_unreadable_city_file_is_skipped(tmp_path, monkeypatch, capsys):
     """A damaged or foreign *.sqlite in the data dir is named and skipped; the other cities still start."""
     import sqlite3

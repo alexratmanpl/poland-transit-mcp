@@ -9,8 +9,11 @@ only POST, run by uvicorn with a limit on connections.
 - **POST only.** The server answers each call in the POST's own JSON reply (stateless, JSON responses), so it never
   pushes anything on a GET stream. The SDK still opens one for a GET and holds it for ever; a few thousand idle
   ones use up the process's file descriptors. GET and DELETE on the MCP path are answered 405 instead.
-- **Connections.** uvicorn answers 503 past `max_connections` connections or requests at once, and closes a
-  connection idle for KEEP_ALIVE_S seconds.
+- **Connections.** No cap by default. uvicorn's cap (`max_connections`, opt-in) counts every open connection,
+  also one that never sends a request, so a few idle sockets per slot would turn every call away with 503; without
+  it, a flood needs about as many sockets as the process has file descriptors. Either way one process only bounds
+  a connection flood: a server shared with others belongs behind a gateway (SECURITY.md). A connection idle for
+  KEEP_ALIVE_S seconds after a reply is closed.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ import socket
 from typing import Any
 
 MCP_PATH = "/mcp"
-DEFAULT_MAX_CONNECTIONS = 100
+DEFAULT_MAX_CONNECTIONS: int | None = None  # no cap: see the module text
 KEEP_ALIVE_S = 5
 # what the SDK allows by itself for its three loopback names
 SDK_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
@@ -83,7 +86,7 @@ def app(server, host: str):
                                                transport_security=transport_security(host), host=host))
 
 
-def run(server, host: str, port: int, max_connections: int = DEFAULT_MAX_CONNECTIONS) -> None:
+def run(server, host: str, port: int, max_connections: int | None = DEFAULT_MAX_CONNECTIONS) -> None:
     import anyio
     import uvicorn
     config = uvicorn.Config(app(server, host), host=host, port=port, limit_concurrency=max_connections,
