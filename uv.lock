@@ -1009,7 +1009,7 @@ wheels = [
 
 [[package]]
 name = "poland-transit-mcp"
-version = "0.5.3"
+version = "0.5.4"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

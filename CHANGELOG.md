@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.4 - 2026-11-19
 
 ### Security
 - **DNS rebinding is stopped on every loopback address.** The MCP SDK checked the Host and Origin headers by itself only when the server was bound to exactly `127.0.0.1`, `localhost` or `::1`. Bound to another loopback address (`--host 127.0.0.2`, or `127.1`), it checked nothing, so a web page that pointed its own name at that address could call the tools. The check is now always set by the server: on for every loopback address, and explicitly off for any other address (behind a gateway the server cannot know the gateway's name; it warns at start, as before). The start-up warning no longer calls `127.0.0.2` "not loopback".
