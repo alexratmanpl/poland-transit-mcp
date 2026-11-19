@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # warszawa: ZTM's terms not read yet. zakopane: map and walking only; the inputs of
+        # warszawa: not built here yet (ZTM's re-use conditions read 2026-11-19; add it with the first data release). zakopane: map and walking only; the inputs of
         # scripts/zakopane_gtfs.py are not published and the timetable's terms are unclear.
         city: [gdansk, krakow, wroclaw, poznan, torun, lublin, katowice, zakopane]
     steps:
