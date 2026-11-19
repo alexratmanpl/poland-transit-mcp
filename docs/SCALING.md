@@ -76,6 +76,16 @@ macOS with freed memory returned), and the time to build it (Apple Silicon, meas
 - Seven Warszawa dates take about 330 MB with the Rust engine (430 MB with the Python search), besides its walking graph and timetable structures: the number of dates kept is a hosting choice. The start-up line counts them (`size_factors` in `pool.py`: each further date 0.4 × the file size with the Rust engine and 0.5 × with the Python search; 1.7 × and 3.2 × for the national layer, measured as above).
 - The pool's estimate of a date (`trips_bytes` and `raptor_bytes` in `timetable.py`) is within 2 % of these numbers on all four data sets with either search (Python 3.14; on 3.11 and 3.13, 0-2 % above them). Before 2026-11-18 it was 0.72 to 0.89 of them (Warszawa 40 MB of 46 with the Rust engine, `poland` 22.6 of 31): it missed the Python objects kept beside the engine's tables (each pattern's stop list and trips, each stop's list of patterns) and undercounted each trip's objects and id. With many dates kept, the budget was passed by that much.
 - A date is built once even when several calls ask for it at the same time: the later calls wait for that build.
+- **Calls on several new dates at once.** A date a call holds stays in memory until the call ends, even after the
+  cache has dropped it, so the pool counts it until then. Before a call builds its first date, the pool makes room
+  for it (dropping dates first, then unloading cities, as above); if it still does not fit while other calls in
+  flight hold dates they built, the call waits until they end, at most 5 s, then builds it anyway (the budget stays a
+  target). It does not wait when the budget cannot hold even the cities it uses with one date each, and a call that
+  already holds a date never waits for another. One call at a time never waits. Measured 2026-11-19 on a synthetic
+  national layer (23.5 MB file, about 120 MB a date with the Python search, more than real ones), `--memory-budget 480`,
+  six `plan_stations` calls on six dates at once: peak resident memory 754 → 565 MB with the Python search and
+  829 → 642 MB with the Rust engine, in the same total time (12.5-13 s for the six: building dates is Python work, so
+  building them at once was no faster than in turn).
 - `--warm-days` and `--warm-from` build dates at start: breadth-first over the cities, each date with both routing directions, stopping before a date would pass 70 % of the budget. Measured with Gdańsk, Kraków, `poland` and Warszawa, `--memory-budget 1000 --days-kept 3 --warm-days 3`: all twelve dates in 3.2 s. The warm-up is not repeated at midnight.
 
 ### Memory on macOS

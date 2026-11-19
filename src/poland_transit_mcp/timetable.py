@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import math
 import threading
+import weakref
 from array import array
+from bisect import bisect_left
 from collections import OrderedDict
 from concurrent.futures import Future
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -14,6 +17,7 @@ import numpy as np
 from . import engine, telemetry
 from .geo import LatLon, decode_parts
 from .shared_db import SharedConnection
+from .text import fold
 from .timeutil import add_days, weekday
 
 NO_PICKUP = 1
@@ -150,9 +154,16 @@ class Timetable:
     days_kept: int = 2  # dates kept in memory, least recently used dropped first (pool.py sets it)
     _days: OrderedDict = field(default_factory=OrderedDict)  # date → Day, least recently used first
     _building: dict = field(default_factory=dict)  # date → Future of a Day another thread is building
+    # every Day still in memory: the cached ones and those that calls in flight hold after the cache dropped them
+    _alive: weakref.WeakValueDictionary = field(default_factory=weakref.WeakValueDictionary, repr=False, compare=False)
+    # set by the memory pool (pool.py): a context manager around each date build that makes room for it first
+    # (and counts it while it is built)
+    reserve_day: object = field(default=None, repr=False, compare=False)
     _shapes: dict = field(default_factory=dict)
     _headway_col: bool = False
     _base_bytes: int = 0  # estimated memory of the structures loaded with the timetable (approx_bytes)
+    _by_name: dict = field(default_factory=dict)  # folded stop name → its stops, by index (stops_named)
+    _name_keys: list = field(default_factory=list)  # the folded names, sorted (prefix lookups)
     _engine_transfers: object = None  # foot transfers in the Rust engine, built once per city
     has_trip_details: bool = False  # rail feeds: train names, categories, platforms (trip_info table)
     _days_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
@@ -179,6 +190,10 @@ class Timetable:
             s = Stop(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], float(r[8] or 0))
             self.stops[s.idx] = s
             self.stop_by_id[s.id] = s
+        for s in self.stops:  # in index order, so each name's stops come out in it
+            if s is not None:
+                self._by_name.setdefault(fold(s.name), []).append(s)
+        self._name_keys = sorted(self._by_name)
         for p in self.patterns.values():
             for pos, s in enumerate(p.stops):
                 self.stop_patterns.setdefault(s, []).append((p, pos))
@@ -191,13 +206,33 @@ class Timetable:
     def n_stops(self) -> int:
         return len(self.stops)
 
+    def stops_named(self, folded: str) -> list[Stop]:
+        """The stops whose folded name (text.fold) is `folded`, by index."""
+        return list(self._by_name.get(folded, ()))
+
+    def stops_named_from(self, prefix: str) -> list[Stop]:
+        """The stops whose folded name starts with `prefix`, by index: a range of the sorted names, not a scan."""
+        keys = self._name_keys
+        out: list[Stop] = []
+        for i in range(bisect_left(keys, prefix), len(keys)):
+            if not keys[i].startswith(prefix):
+                break
+            out.extend(self._by_name[keys[i]])
+        out.sort(key=lambda s: s.idx)
+        return out
+
+    def names_containing(self, part: str) -> set[str]:
+        """The stop names (as stored) whose folded name contains `part`: one pass over the distinct names."""
+        return {s.name for k in self._name_keys if part in k for s in self._by_name[k]}
+
     def approx_bytes(self) -> int:
         """Estimated memory, counted from what is loaded: ~1.9 KB per stop and per stop pattern for the
-        base structures, the engine's foot transfers, and each cached date's own size (Day.nbytes: its
-        trips and the routing tables built for it, counted once when each is built)."""
+        base structures, the engine's foot transfers, and each date's own size (Day.nbytes: its trips and the
+        routing tables built for it, counted once when each is built). A date counts while it is in memory:
+        cached, or dropped from the cache but still held by a call in flight."""
         transfers = self._engine_transfers
         with self._days_lock:
-            days = sum(day.nbytes for day in self._days.values())
+            days = sum(day.nbytes for day in self._alive.values())
         return self._base_bytes + days + (transfers.nbytes() if transfers is not None else 0)
 
     def days_cached(self) -> list[int]:
@@ -255,31 +290,48 @@ class Timetable:
         past midnight (GTFS times > 24:00) and the next day's early-morning trips.
 
         Built once: a call asking for a date that another call is building waits for that build (and
-        gets its error, if it fails). The build runs outside the lock, so other dates are not held up."""
+        gets its error, if it fails). The build runs outside the cache's lock, so other dates are not held up,
+        after the memory pool has made room for it (reserve_day, which may wait for other calls building dates
+        to finish; it waits before this date is marked as being built, so no call waits for a waiting one)."""
         with self._days_lock:
-            day = self._days.get(d)
-            if day is not None:
-                self._days.move_to_end(d)
-                return day
-            pending = self._building.get(d)
-            building = pending is None
-            if building:
-                pending = self._building[d] = Future()
-        if not building:
+            day = self._cached(d)
+            pending = self._building.get(d) if day is None else None
+        if day is not None:
+            return day
+        if pending is not None:
             return pending.result()  # the Day itself: it may already have been dropped from the cache
-        try:
-            day = self._build_day(d)
-        except BaseException as e:
+        with self.reserve_day() if self.reserve_day else nullcontext():
             with self._days_lock:
+                day = self._cached(d)  # built by another call while this one waited for room
+                pending = self._building.get(d) if day is None else None
+                building = day is None and pending is None
+                if building:
+                    pending = self._building[d] = Future()
+            if day is not None:
+                return day
+            if not building:
+                return pending.result()
+            try:
+                day = self._build_day(d)
+            except BaseException as e:
+                with self._days_lock:
+                    del self._building[d]
+                pending.set_exception(e)
+                raise
+            with self._days_lock:
+                self._days[d] = day
+                self._alive[id(day)] = day
                 del self._building[d]
-            pending.set_exception(e)
-            raise
-        with self._days_lock:
-            self._days[d] = day
-            del self._building[d]
-            while len(self._days) > max(self.days_kept, 1):
-                self._days.popitem(last=False)
+                while len(self._days) > max(self.days_kept, 1):
+                    self._days.popitem(last=False)
         pending.set_result(day)
+        return day
+
+    def _cached(self, d: int) -> Day | None:
+        """The cached Day of date d, marked most recently used (call with _days_lock held)."""
+        day = self._days.get(d)
+        if day is not None:
+            self._days.move_to_end(d)
         return day
 
     def _build_day(self, d: int) -> Day:

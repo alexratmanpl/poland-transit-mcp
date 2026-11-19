@@ -22,8 +22,9 @@ jobs:
         target: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v4
-      - uses: PyO3/maturin-action@v1
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
         with:
+          maturin-version: v1.16.0
           working-directory: engine
           target: ${{ matrix.target }}
           manylinux: "2014"
@@ -39,8 +40,9 @@ jobs:
         target: [x86_64, aarch64]
     steps:
       - uses: actions/checkout@v4
-      - uses: PyO3/maturin-action@v1
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
         with:
+          maturin-version: v1.16.0
           working-directory: engine
           target: ${{ matrix.target }}
           args: --release --out dist
@@ -52,8 +54,9 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - uses: PyO3/maturin-action@v1
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
         with:
+          maturin-version: v1.16.0
           working-directory: engine
           target: x64
           args: --release --out dist
@@ -65,8 +68,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: PyO3/maturin-action@v1
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
         with:
+          maturin-version: v1.16.0
           working-directory: engine
           command: sdist
           args: --out dist
@@ -87,7 +91,7 @@ jobs:
         with:
           name: wheels-linux-x86_64
           path: wheels
-      - run: uv sync --extra dev
+      - run: uv sync --locked --extra dev
       - run: uv pip install wheels/*.whl
       - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
       - run: uv run pytest -q
@@ -103,4 +107,4 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3

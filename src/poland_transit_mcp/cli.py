@@ -1,7 +1,7 @@
 """Command line.
 
   poland-transit-mcp [--cities gdansk,krakow|all] [--memory-budget MB] [--days-kept N] [--warm-days N] [--warm-from N]
-                     [--data-dir DIR] [--http PORT [--host ADDR]] [--live gdansk] [--no-download]
+                     [--data-dir DIR] [--http PORT [--host ADDR] [--max-connections N]] [--live gdansk] [--no-download]
   poland-transit-mcp download gdansk,krakow [--data-dir DIR] [--from URL]
   poland-transit-mcp build gdansk [--download] [--skip-gtfs] [--force] [--data-dir DIR]
   poland-transit-mcp credits [--cities gdansk,poland] [--data-dir DIR] > credits.json
@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import gzip
 import os
+import sqlite3
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -19,11 +21,12 @@ from pathlib import Path
 from . import (
     memory,  # sets how large freed allocations go back to the OS, before any are made
     net,
+    web,
 )
 from .city import City
 from .config import CITIES
+from .web import DEFAULT_MAX_CONNECTIONS, KEEP_ALIVE_S
 
-LOOPBACK = ("127.0.0.1", "localhost", "::1")
 DEFAULT_DATA_URL = "https://github.com/alexratmanpl/poland-transit-mcp/releases/download/data-latest"
 
 
@@ -56,19 +59,32 @@ def at_least(lowest: int):
     return parse
 
 
+DOWNLOAD_DEADLINE_S = 1800  # a whole city file, however slowly the server sends it
+
+
 def download(ids: list[str], directory: Path, base: str | None = None) -> None:
-    """Fetches prebuilt <city>.sqlite.gz files (GitHub Releases by default) and unpacks them."""
+    """Fetches prebuilt <city>.sqlite.gz files (GitHub Releases by default) and unpacks them. Each one is unpacked
+    into a new temporary file of its own beside the target (created exclusively, so a planted file or link there is
+    never written through), which replaces the target only when it is complete and is deleted when it is not."""
     base = base or os.environ.get("POLAND_TRANSIT_DATA_URL") or DEFAULT_DATA_URL
     for cid in ids:
         url = f"{base}/{cid}.sqlite.gz"
         log(f"downloading {url}")
-        part = directory / f"{cid}.sqlite.part"
-        with net.urlopen(url, timeout=120) as r:
+        with net.urlopen(url, timeout=120, deadline=DOWNLOAD_DEADLINE_S) as r:
             directory.mkdir(parents=True, exist_ok=True)  # only once the server has answered: a failed fetch leaves nothing behind
-            with gzip.GzipFile(fileobj=r) as gz, open(part, "wb") as out:
-                while chunk := gz.read(1 << 20):
-                    out.write(chunk)
-        part.replace(directory / f"{cid}.sqlite")
+            # not named *.sqlite: a leftover is never loaded as a city
+            fd, part = tempfile.mkstemp(dir=directory, prefix=f".{cid}.", suffix=".part")
+            try:
+                mask = os.umask(0)
+                os.umask(mask)
+                os.chmod(part, 0o666 & ~mask)  # as a plainly created file: mkstemp makes it 0600
+                with gzip.GzipFile(fileobj=r) as gz, os.fdopen(fd, "wb") as out:
+                    while chunk := gz.read(1 << 20):
+                        out.write(chunk)
+                os.replace(part, directory / f"{cid}.sqlite")
+            except BaseException:
+                Path(part).unlink(missing_ok=True)
+                raise
         log(f"saved {directory / f'{cid}.sqlite'}")
 
 
@@ -88,6 +104,11 @@ def serve(argv: list[str]) -> None:
                     help="address --http binds to (default $POLAND_TRANSIT_HOST, else 127.0.0.1). There is no "
                          "authentication: bind another address, e.g. 0.0.0.0 in a container, only on a network that "
                          "nothing untrusted can reach")
+    ap.add_argument("--max-connections", type=at_least(1), metavar="N",
+                    default=os.environ.get("POLAND_TRANSIT_MAX_CONNECTIONS") or str(DEFAULT_MAX_CONNECTIONS),
+                    help=f"--http: connections and requests served at once (default {DEFAULT_MAX_CONNECTIONS}); "
+                         "past it a request is answered 503, and an idle connection is closed after "
+                         f"{KEEP_ALIVE_S} s")
     ap.add_argument("--live", default=os.environ.get("POLAND_TRANSIT_LIVE", ""), help="opt in to live departures, e.g. gdansk")
     ap.add_argument("--no-download", action="store_true", help="never fetch missing city files")
     ap.add_argument("--memory-budget", type=float, metavar="MB",
@@ -136,6 +157,9 @@ def serve(argv: list[str]) -> None:
             cities[cid] = City.open(directory, cid)
         except (FileNotFoundError, ValueError) as e:
             log(f"skipping {cid}: {e}")
+        except (sqlite3.Error, KeyError, TypeError) as e:  # not a city file, or a damaged one: the others still load
+            log(f"skipping {cid}: {directory / f'{cid}.sqlite'} is not a readable city file "
+                f"({type(e).__name__}: {e})")
     if not cities:
         log(f"no city data found in {directory}. Build it: poland-transit-mcp build gdansk --download, then start "
             f"with --data-dir ./data/cities if you are not in a clone (prebuilt downloads are not published yet)")
@@ -165,10 +189,11 @@ def serve(argv: list[str]) -> None:
     if a.http:
         shown = f"[{a.host}]" if ":" in a.host else a.host
         log(f"Streamable HTTP on http://{shown}:{a.http}/mcp")
-        if a.host not in LOOPBACK:
+        if not web.is_loopback(a.host):
             log(f"WARNING: bound to {a.host}, not loopback, and there is no authentication: anyone who can reach this "
-                "address can call the tools. The MCP SDK's DNS-rebinding check is off for non-loopback addresses")
-        server.run("streamable-http", host=a.host, port=a.http, stateless_http=True, json_response=True)
+                "address can call the tools. The DNS-rebinding check (Host and Origin headers) is on for loopback "
+                "addresses only")
+        web.run(server, a.host, a.http, max_connections=a.max_connections)
     else:
         server.run()
 

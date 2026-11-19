@@ -2,6 +2,7 @@
 import shutil
 import sqlite3
 import threading
+import time
 
 import pytest
 from fixture import at
@@ -257,3 +258,124 @@ def test_warm_up_stops_before_a_city_that_would_not_fit(two_cities, capsys):
     pool.warm(["alpha", "beta"], DATES[0], days=2, share=1)
     assert pool.loaded_bytes() == 0
     assert "warm-up stopped before alpha on 2026-11-10" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- dates built by calls at the same time
+# A date a call holds stays in memory until the call ends, even once the cache has dropped it. Calls on several new
+# dates at once would each hold one, past the budget: a call waits for room before it builds its first date.
+
+class Holder:
+    """A call in its own thread: uses alpha, builds `date`, then holds it until let go."""
+
+    def __init__(self, pool: CityPool, date: int, then: int | None = None):
+        self.pool, self.date, self.then = pool, date, then
+        self.holding, self.go, self.done = threading.Event(), threading.Event(), threading.Event()
+        self.built_then_at = None
+        threading.Thread(target=self.run, daemon=True).start()
+
+    def run(self):
+        c = self.pool.use("alpha")
+        try:
+            self.day = c.tt.day(self.date)
+            self.holding.set()
+            self.go.wait(10)
+            if self.then is not None:  # a second date in the same call: it never waits
+                c.tt.day(self.then)
+                self.built_then_at = time.monotonic()
+        finally:
+            self.pool.release()
+            self.done.set()
+
+
+@pytest.fixture()
+def tight(two_cities, monkeypatch):
+    """A pool over alpha whose budget holds its graph, timetable and one date, not two."""
+    pool = CityPool({"alpha": two_cities["alpha"]}, budget_mb=1000, overhead_mb=0, days_kept=3, day_wait_s=5)
+    monkeypatch.setattr(CityPool, "expected_bytes", classmethod(lambda cls, c, days=1: 1000 * days))
+    c = pool.use("alpha")
+    load(c)
+    pool.release()
+    pool.budget = pool.loaded_bytes() + 100  # room for what is loaded, not for one more date
+    return pool, c
+
+
+def built(monkeypatch) -> dict:
+    """date → when it was built."""
+    from poland_transit_mcp.timetable import Timetable
+    out, orig = {}, Timetable._build_day
+
+    def run(self, d):
+        day = orig(self, d)
+        out[d] = time.monotonic()
+        return day
+    monkeypatch.setattr(Timetable, "_build_day", run)
+    return out
+
+
+def test_a_call_waits_for_room_before_it_builds_a_date_while_another_call_holds_one(tight, monkeypatch):
+    pool, c = tight
+    at_ = built(monkeypatch)
+    first = Holder(pool, DATES[1])
+    assert first.holding.wait(10)
+    second = Holder(pool, DATES[2])
+    time.sleep(0.3)
+    assert DATES[2] not in at_  # waiting: the first call holds its date
+    let_go = time.monotonic()
+    first.go.set()
+    assert first.done.wait(10) and second.holding.wait(10)
+    assert let_go <= at_[DATES[2]] < let_go + 2  # built once the first call ended, not at the wait's limit
+    second.go.set()
+    assert second.done.wait(10)
+
+
+def test_a_call_that_holds_a_date_never_waits_for_its_next(tight, monkeypatch):
+    pool, c = tight
+    at_ = built(monkeypatch)
+    first = Holder(pool, DATES[1], then=DATES[3])
+    assert first.holding.wait(10)
+    second = Holder(pool, DATES[2])  # waits for the first call
+    time.sleep(0.3)
+    t = time.monotonic()
+    first.go.set()  # the first call now asks for another date while the second one waits
+    assert first.done.wait(10) and first.built_then_at - t < 2
+    assert second.holding.wait(10)
+    second.go.set()
+    assert second.done.wait(10)
+
+
+def test_a_wait_for_room_ends_at_its_limit(tight, monkeypatch):
+    pool, c = tight
+    pool.day_wait_s = 0.3
+    first = Holder(pool, DATES[1])
+    assert first.holding.wait(10)
+    t = time.monotonic()
+    second = Holder(pool, DATES[2])
+    assert second.holding.wait(10) and 0.25 < time.monotonic() - t < 3  # the budget is a target: built anyway
+    first.go.set()
+    second.go.set()
+    assert first.done.wait(10) and second.done.wait(10)
+
+
+def test_one_call_at_a_time_never_waits(tight):
+    pool, c = tight
+    for d in DATES:
+        t = time.monotonic()
+        load(pool.use("alpha"))
+        c.tt.day(d)
+        pool.release()
+        assert time.monotonic() - t < 1
+
+
+def test_a_date_held_by_a_call_is_counted_until_the_call_lets_go(two_cities):
+    import gc
+    pool = CityPool({"alpha": two_cities["alpha"]}, budget_mb=1000, overhead_mb=0, days_kept=1)
+    c = pool.use("alpha")
+    base = c.tt.approx_bytes()
+    held = c.tt.day(DATES[0])
+    c.tt.day(DATES[1])  # the cache keeps one date: DATES[0] is dropped from it, but this call holds it
+    assert c.cached_days() == [DATES[1]]
+    assert c.tt.approx_bytes() == base + held.nbytes + c.tt.last_day_bytes()
+    del held
+    gc.collect()
+    assert c.tt.approx_bytes() == base + c.tt.last_day_bytes()
+    pool.release()

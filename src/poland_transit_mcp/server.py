@@ -427,21 +427,45 @@ def _strict_arguments(server: MCPServer) -> None:
 UNKNOWN_TOOL = "unknown tool "
 
 
+def _kind_and_place(exc: BaseException | None) -> tuple[str, str]:
+    """An exception's type and the file:line it was raised at: what the log keeps of an error (its message can quote
+    the caller's input)."""
+    while exc is not None and exc.__cause__ is not None:  # the SDK wraps the original error
+        exc = exc.__cause__
+    frames = traceback.extract_tb(exc.__traceback__) if exc is not None else []
+    where = f"{frames[-1].filename.rsplit('/', 1)[-1]}:{frames[-1].lineno}" if frames else "?"
+    return (type(exc).__qualname__ if exc is not None else "?"), where
+
+
+def _cut(text: Any) -> str:
+    text = str(text)
+    return text if len(text) <= 40 else text[:39] + "…"
+
+
 class _NoCallerText(logging.Filter):
     """The SDK logs every refused call with its message, and messages quote what the caller asked about (a home
     address, say). This keeps the tool and the kind of failure: the message, an argument name longer than 40
-    characters and an unexpected error's text are left out of the log."""
+    characters and an unexpected error's text are left out of the log. A resource read that fails is logged without
+    its URI (any URI but the server's own is the caller's text)."""
 
     REFUSED = "Tool %r refused a call (the message is not logged: it can quote the caller's input)"
     CRASHED = "Tool %r failed with %s at %s (the message is not logged: it can quote the caller's input)"
+    RESOURCE_REFUSED = "A resource read was refused (the URI and the message are not logged: they are the caller's input)"
+    RESOURCE_CRASHED = "Resource %r failed with %s at %s (the message is not logged: it can quote the caller's input)"
 
-    @staticmethod
-    def _cut(text: Any) -> str:
-        text = str(text)
-        return text if len(text) <= 40 else text[:39] + "…"
+    _cut = staticmethod(_cut)
 
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args if isinstance(record.args, tuple) else ()
+        if record.msg == "Resource %r failed: %r":
+            record.msg, record.args = self.RESOURCE_REFUSED, ()
+            return True
+        if record.msg == "Resource %r raised an unexpected exception":
+            uri = args[0] if args and args[0] == CREDITS_URI else "(another resource)"
+            exc = record.exc_info[1] if record.exc_info else None
+            record.msg, record.args = self.RESOURCE_CRASHED, (uri, *_kind_and_place(exc))
+            record.exc_info, record.exc_text, record.stack_info = None, None, None
+            return True
         if args and isinstance(args[0], str):  # a tool's name, as the caller sent it
             args = (self._cut(args[0]), *args[1:])
             record.args = args
@@ -453,20 +477,50 @@ class _NoCallerText(logging.Filter):
             fields = [self._cut(f) for f in args[1]]
             record.args = (args[0], fields[:5] + ([f"and {len(fields) - 5} more"] if len(fields) > 5 else []))
         elif record.msg == "Tool %r raised an unexpected exception" and args and record.exc_info:
-            exc = record.exc_info[1]
-            while exc is not None and exc.__cause__ is not None:  # the SDK wraps the tool's own error
-                exc = exc.__cause__
-            frames = traceback.extract_tb(exc.__traceback__) if exc is not None else []
-            where = f"{frames[-1].filename.rsplit('/', 1)[-1]}:{frames[-1].lineno}" if frames else "?"
-            record.msg, record.args = self.CRASHED, (args[0], type(exc).__qualname__, where)
+            record.msg, record.args = self.CRASHED, (args[0], *_kind_and_place(record.exc_info[1]))
             record.exc_info, record.exc_text = None, None
         return True
 
 
+class _NoTraceback(logging.Filter):
+    """The SDK's request dispatchers log a handler's error with its traceback, and the traceback's last line is the
+    error's message: an unknown prompt's name, say, as the caller sent it. This keeps the message's own words (with
+    each value cut to 40 characters) and the error's type and place, never its message."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(a if isinstance(a, (int, float)) else _cut(a) for a in record.args)
+        if record.exc_info:
+            kind, where = _kind_and_place(record.exc_info[1])
+            record.msg = f"{record.getMessage()}: {kind} at {where} (the message is not logged: it can quote the caller's input)"
+            record.args, record.exc_info, record.exc_text, record.stack_info = (), None, None, None
+        return True
+
+
+class _NoHeaders(logging.Filter):
+    """The SDK's DNS-rebinding check logs a refused Host or Origin header in full: text the caller chose."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = str(record.msg)
+        for head in ("Invalid Host header", "Invalid Origin header"):
+            if msg.startswith(head):
+                record.msg, record.args = f"{head} refused (its value is not logged: the caller chose it)", ()
+        return True
+
+
+_LOG_FILTERS = {
+    "mcp.server.mcpserver.server": _NoCallerText,
+    "mcp.shared.jsonrpc_dispatcher": _NoTraceback,  # stdio and HTTP
+    "mcp.shared.direct_dispatcher": _NoTraceback,  # an in-process client
+    "mcp.server.transport_security": _NoHeaders,
+}
+
+
 def _quiet_sdk_log() -> None:
-    sdk = logging.getLogger("mcp.server.mcpserver.server")
-    if not any(isinstance(f, _NoCallerText) for f in sdk.filters):
-        sdk.addFilter(_NoCallerText())
+    for name, kind in _LOG_FILTERS.items():
+        sdk = logging.getLogger(name)
+        if not any(isinstance(f, kind) for f in sdk.filters):
+            sdk.addFilter(kind())
 
 
 class CallLimit:
