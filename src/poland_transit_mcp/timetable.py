@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import threading
+from bisect import bisect_left
 from array import array
 from collections import OrderedDict
 from concurrent.futures import Future
@@ -14,6 +15,7 @@ import numpy as np
 from . import engine, telemetry
 from .geo import LatLon, decode_parts
 from .shared_db import SharedConnection
+from .text import fold
 from .timeutil import add_days, weekday
 
 NO_PICKUP = 1
@@ -153,6 +155,8 @@ class Timetable:
     _shapes: dict = field(default_factory=dict)
     _headway_col: bool = False
     _base_bytes: int = 0  # estimated memory of the structures loaded with the timetable (approx_bytes)
+    _by_name: dict = field(default_factory=dict)  # folded stop name → its stops, by index (stops_named)
+    _name_keys: list = field(default_factory=list)  # the folded names, sorted (prefix lookups)
     _engine_transfers: object = None  # foot transfers in the Rust engine, built once per city
     has_trip_details: bool = False  # rail feeds: train names, categories, platforms (trip_info table)
     _days_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
@@ -179,6 +183,10 @@ class Timetable:
             s = Stop(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], float(r[8] or 0))
             self.stops[s.idx] = s
             self.stop_by_id[s.id] = s
+        for s in self.stops:  # in index order, so each name's stops come out in it
+            if s is not None:
+                self._by_name.setdefault(fold(s.name), []).append(s)
+        self._name_keys = sorted(self._by_name)
         for p in self.patterns.values():
             for pos, s in enumerate(p.stops):
                 self.stop_patterns.setdefault(s, []).append((p, pos))
@@ -190,6 +198,25 @@ class Timetable:
     @property
     def n_stops(self) -> int:
         return len(self.stops)
+
+    def stops_named(self, folded: str) -> list[Stop]:
+        """The stops whose folded name (text.fold) is `folded`, by index."""
+        return list(self._by_name.get(folded, ()))
+
+    def stops_named_from(self, prefix: str) -> list[Stop]:
+        """The stops whose folded name starts with `prefix`, by index: a range of the sorted names, not a scan."""
+        keys = self._name_keys
+        out: list[Stop] = []
+        for i in range(bisect_left(keys, prefix), len(keys)):
+            if not keys[i].startswith(prefix):
+                break
+            out.extend(self._by_name[keys[i]])
+        out.sort(key=lambda s: s.idx)
+        return out
+
+    def names_containing(self, part: str) -> set[str]:
+        """The stop names (as stored) whose folded name contains `part`: one pass over the distinct names."""
+        return {s.name for k in self._name_keys if part in k for s in self._by_name[k]}
 
     def approx_bytes(self) -> int:
         """Estimated memory, counted from what is loaded: ~1.9 KB per stop and per stop pattern for the
