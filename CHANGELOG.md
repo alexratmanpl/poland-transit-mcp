@@ -4,6 +4,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 
 ## Unreleased
 
+### Added
+- **A regression test for idle connections** against a real uvicorn server (`tests/test_http_connections.py`): 110 sockets that never send a request must not turn a call away. `web.config` returns the uvicorn settings `--http` runs with. The first postmortem, [docs/postmortems/2026-11-19-idle-connections-503.md](docs/postmortems/2026-11-19-idle-connections-503.md), explains why 0.5.4 needed it.
+
 ### Changed
 - **One release workflow for both packages.** `engine-wheels.yml` is now `release.yml`: it also builds the server (`poland-transit-mcp`), publishes only from a release tag that matches the server's version, and uploads both packages with PyPI Trusted Publishing after a maintainer approves the `pypi` environment. Files PyPI already has for a version are skipped, so a release first uploaded by hand gets the engine's wheels added. docs/PUBLISHING.md describes the one-time setup (a trusted publisher per package) and the steps.
 

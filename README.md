@@ -80,6 +80,7 @@ Arguments, declared answer fields, errors and answer sizes: **[docs/TOOLS.md](do
 | [docs/CHECKS.md](docs/CHECKS.md) | accuracy against operators' timetables, speed and memory measurements |
 | [docs/PUBLISHING.md](docs/PUBLISHING.md) | releasing both packages to PyPI (one workflow, Trusted Publishing) |
 | [SECURITY.md](SECURITY.md) | what the server trusts, running it for others, reporting a vulnerability |
+| [docs/postmortems/](docs/postmortems/) | what went wrong, why our process let it through, what changed |
 | [SOURCES.md](SOURCES.md) · [DATA-LICENSE.md](DATA-LICENSE.md) | every feed with its credits · data licences and redistribution |
 | [DECISIONS.md](DECISIONS.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) | design choices · contributing · releases |
 

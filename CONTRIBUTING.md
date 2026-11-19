@@ -15,6 +15,13 @@ uv run python scripts/smoke.py        # if you have city data built
 - Never commit data: `data/`, `*.sqlite`, `*.pbf`, `*.zip` and `.mcp.json` are gitignored for a reason.
 - Changes to the search must give the same answers in Python and Rust (`scripts/compare_engines.py`).
 
+## Changing the HTTP transport
+
+Test it against a real server (`web.config` gives the settings `--http` runs with; see
+`tests/test_http_connections.py`), not only with an in-process client: connection limits, timeouts and keep-alive
+live in uvicorn's connection layer, which an in-process client never reaches
+([postmortem](docs/postmortems/2026-11-19-idle-connections-503.md)).
+
 ## Adding or changing a tool
 
 Every tool follows one rule ([docs/TOOLS.md](docs/TOOLS.md#lean-by-default-more-on-demand) has it in full):
