@@ -1,7 +1,7 @@
 # Postmortem: idle connections turned every HTTP call away (0.5.4)
 
-**Date:** 2026-11-19 · **Status:** resolved in 0.5.5 · **Impact:** none on users (caught before the first public
-release) · **Format:** blameless: what happened, why our process let it through, what changed.
+**Date:** 2026-11-19 · **Status:** resolved in 0.5.5 · **Impact:** none on users (caught while the repository was
+private and before anything was on PyPI) · **Format:** blameless: what happened, why our process let it through, what changed.
 
 ## Summary
 
@@ -48,7 +48,8 @@ gave anyone who could open 100 sockets a way to turn every caller away until the
 
 ## What went well
 
-- An independent retest ran before the first public release, so no user ever had the regression.
+- An independent retest ran while the repository was private and before anything was on PyPI, so no user ever
+  had the regression.
 - The finding was precise (counts, timings), so triage took minutes.
 - Releases were ordered so nothing had been uploaded yet.
 
