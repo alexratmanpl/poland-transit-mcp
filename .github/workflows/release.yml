@@ -1,17 +1,19 @@
-# Builds the optional Rust engine (engine/) as wheels for Linux, macOS and Windows, and can publish
-# them to PyPI as poland-transit-mcp-engine. Nothing is published unless a maintainer starts this
-# workflow by hand with "publish" ticked. See docs/PUBLISHING.md for the one-time PyPI setup
-# (Trusted Publishing: no tokens or secrets are stored in this repository).
-name: engine-wheels
+# Builds both packages and, when a maintainer asks, publishes them to PyPI:
+#   poland-transit-mcp         the server (pure Python: one wheel and the source)
+#   poland-transit-mcp-engine  the optional Rust engine (abi3 wheels for Linux, macOS, Windows, and the source)
+# Nothing is published unless a maintainer starts this workflow by hand on a release tag (vX.Y.Z) with
+# "publish" ticked, and approves the `pypi` environment. The tag must match the version in pyproject.toml.
+# PyPI Trusted Publishing: no tokens or secrets are stored in this repository (docs/PUBLISHING.md).
+name: release
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Upload the built wheels to PyPI (poland-transit-mcp-engine)"
+        description: "Upload both packages to PyPI (run this on a release tag)"
         type: boolean
         default: false
   pull_request:
-    paths: ["engine/**", ".github/workflows/engine-wheels.yml"]
+    paths: ["engine/**", "src/**", "pyproject.toml", "uv.lock", ".github/workflows/release.yml"]
 permissions:
   contents: read
 jobs:
@@ -34,7 +36,7 @@ jobs:
           name: wheels-linux-${{ matrix.target }}
           path: engine/dist
   macos:
-    runs-on: macos-14
+    runs-on: macos-15  # Apple Silicon; the x86_64 wheel is cross-built (macos-14 images are retired)
     strategy:
       matrix:
         target: [x86_64, aarch64]
@@ -78,6 +80,18 @@ jobs:
         with:
           name: sdist
           path: engine/dist
+  server:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - run: uv build --sdist --wheel --out-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: dist/*
   # the Linux wheel, installed next to the server, must give the same answers (tests/test_engine.py)
   check:
     needs: linux
@@ -96,8 +110,8 @@ jobs:
       - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
       - run: uv run pytest -q
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish
-    needs: [linux, macos, windows, sdist, check]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && startsWith(github.ref, 'refs/tags/v')
+    needs: [server, linux, macos, windows, sdist, check]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
@@ -107,4 +121,12 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: The tag matches the server's version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls dist
+          test -f "dist/poland_transit_mcp-${TAG#v}-py3-none-any.whl" || { echo "::error::no server wheel for $TAG"; exit 1; }
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
+        with:
+          skip-existing: true  # a file PyPI already has (an earlier upload of this version) is skipped, the rest added
