@@ -18,7 +18,6 @@ import json
 import os
 import random
 import re
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -27,6 +26,7 @@ import anyio
 from mcp import Client, StdioServerParameters
 
 from poland_transit_mcp.city import City
+from poland_transit_mcp.shared_db import connect_read_only
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--cities", default="gdansk,krakow,warszawa")
@@ -67,7 +67,7 @@ def pct(v: list[float], p: float) -> float:
 
 
 def anchors(city: str) -> list[tuple[float, float]]:
-    db = sqlite3.connect(f"file:{DATA / f'{city}.sqlite'}?mode=ro", uri=True)
+    db = connect_read_only(DATA / f'{city}.sqlite')
     rows = db.execute("SELECT lat, lon FROM stops WHERE node IS NOT NULL").fetchall()
     db.close()
     return rows

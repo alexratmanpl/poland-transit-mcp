@@ -21,6 +21,8 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
+from ..shared_db import connect_read_only
+
 MIN_RUNS_RATIO = 0.5  # a feed with fewer than half the runs of the last good file is treated as gutted
 WARN_DAYS = 14  # warn when a feed ends within this many days
 EXIT_REJECTED = 3
@@ -31,7 +33,7 @@ def read_feeds(path: Path) -> list[dict] | None:
     if not path.exists():
         return None
     try:
-        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        con = connect_read_only(path)
         try:
             row = con.execute("SELECT value FROM meta WHERE key = 'feeds'").fetchone()
         finally:

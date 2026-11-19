@@ -23,13 +23,17 @@ class City:
     def __init__(self, path: Path):
         self.path = path
         self.db = SharedConnection.read_only(path)
-        meta = dict(self.db.execute("SELECT key, value FROM meta"))
-        self.id: str = meta["city"]
-        self.cfg: CityConfig | None = CITIES.get(self.id)
-        self.name: str = meta["name"]
-        self.bbox: list[float] = json.loads(meta["bbox"])
-        self.osm: dict = json.loads(meta["osm"])
-        self.feeds: list[dict] = json.loads(meta["feeds"])
+        try:
+            meta = dict(self.db.execute("SELECT key, value FROM meta"))
+            self.id: str = meta["city"]
+            self.cfg: CityConfig | None = CITIES.get(self.id)
+            self.name: str = meta["name"]
+            self.bbox: list[float] = json.loads(meta["bbox"])
+            self.osm: dict = json.loads(meta["osm"])
+            self.feeds: list[dict] = json.loads(meta["feeds"])
+        except BaseException:  # not a city file, or a damaged one: the caller says so and skips it
+            self.db.close()
+            raise
         self.built_at: str = meta.get("built_at", "")
         # written by the build from the data set's definition; files built before that fall back to config.py
         self.timezone: str = meta.get("timezone", "Europe/Warsaw")

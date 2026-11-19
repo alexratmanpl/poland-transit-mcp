@@ -77,13 +77,12 @@ def test_data_dir_ignores_working_directory(tmp_path, monkeypatch):
 def test_failed_download_gives_one_line_and_leaves_nothing_behind(tmp_path, monkeypatch, capsys):
     """An unpublished release answers 404: the command must say so in one line, exit 1, and not create the directory."""
     import urllib.error
-    import urllib.request
 
-    from poland_transit_mcp import cli
+    from poland_transit_mcp import cli, net
 
-    def refuse(url, timeout=None, context=None):
+    def refuse(url, timeout=None):
         raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
-    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(net, "_open", refuse)
     target = tmp_path / "cities"
     with pytest.raises(SystemExit) as e:
         cli.main(["download", "gdansk", "--data-dir", str(target)])
@@ -93,6 +92,29 @@ def test_failed_download_gives_one_line_and_leaves_nothing_behind(tmp_path, monk
     assert not target.exists()
 
 
+def test_a_download_writes_a_new_temporary_file_and_removes_a_broken_one(tmp_path, monkeypatch):
+    """The unpacked file goes to a new file of its own (a planted link at a predictable name is never written
+    through), replaces the target only when complete, and a failed unpack leaves nothing behind."""
+    import gzip
+    import io
+    import os
+
+    from poland_transit_mcp import cli, net
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    (tmp_path / "gdansk.sqlite.part").symlink_to(victim)  # where the old code wrote
+    bodies = {"gdansk": gzip.compress(b"city bytes"), "krakow": gzip.compress(bytes(range(256)) * 400)[:500]}
+    monkeypatch.setattr(net, "_open", lambda url, timeout: io.BytesIO(bodies[url.rsplit("/", 1)[1].split(".")[0]]))
+    cli.download(["gdansk"], tmp_path, "https://example.invalid")
+    assert (tmp_path / "gdansk.sqlite").read_bytes() == b"city bytes" and victim.read_text() == "keep me"
+    mask = os.umask(0)
+    os.umask(mask)
+    assert (tmp_path / "gdansk.sqlite").stat().st_mode & 0o777 == 0o666 & ~mask  # readable as before, not 0600
+    with pytest.raises(EOFError):  # a cut-off file
+        cli.download(["krakow"], tmp_path, "https://example.invalid")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["gdansk.sqlite", "gdansk.sqlite.part", "victim.txt"]
+
+
 @pytest.mark.parametrize("args, env, host, warned", [
     ([], None, "127.0.0.1", False),
     (["--host", "0.0.0.0"], None, "0.0.0.0", True),
@@ -100,28 +122,54 @@ def test_failed_download_gives_one_line_and_leaves_nothing_behind(tmp_path, monk
     (["--host", "::1"], None, "::1", False),
     (["--host", "[::1]"], None, "::1", False),
     (["--host", "127.0.0.1"], "0.0.0.0", "127.0.0.1", False),  # the flag wins over the variable
+    (["--host", "127.0.0.2"], None, "127.0.0.2", False),  # every loopback address is loopback
+    (["--host", "127.1"], None, "127.1", False),
+    (["--host", "localhost"], None, "localhost", False),
+    (["--host", "192.168.1.5"], None, "192.168.1.5", True),
 ])
 def test_http_binds_loopback_unless_told_otherwise(tmp_path, monkeypatch, capsys, args, env, host, warned):
     from fixture import build_fixture
 
-    from poland_transit_mcp import cli, server
+    from poland_transit_mcp import cli, server, web
     runs = []
-
-    class Fake:
-        def run(self, transport, **kw):
-            runs.append((transport, kw))
+    monkeypatch.setattr(web, "run", lambda srv, host, port, max_connections: runs.append((host, port, max_connections)))
     limits = []
-    monkeypatch.setattr(server, "create_server", lambda pool, calls: limits.append(calls) or Fake())
+    monkeypatch.setattr(server, "create_server", lambda pool, calls: limits.append(calls) or object())
     monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
+    monkeypatch.delenv("POLAND_TRANSIT_MAX_CONNECTIONS", raising=False)
     if env:
         monkeypatch.setenv("POLAND_TRANSIT_HOST", env)
     else:
         monkeypatch.delenv("POLAND_TRANSIT_HOST", raising=False)
     build_fixture(tmp_path)
     cli.main(["--data-dir", str(tmp_path), "--cities", "testowo", "--no-download", "--http", "8080", *args])
-    assert runs == [("streamable-http", {"host": host, "port": 8080, "stateless_http": True, "json_response": True})]
+    assert runs == [(host, 8080, web.DEFAULT_MAX_CONNECTIONS)]
     assert ("no authentication" in capsys.readouterr().err) is warned
     assert [(c.max_calls, c.wait_s) for c in limits] == [(6, 5)]  # the limit on calls at once (default)
+
+
+def test_one_unreadable_city_file_is_skipped(tmp_path, monkeypatch, capsys):
+    """A damaged or foreign *.sqlite in the data dir is named and skipped; the other cities still start."""
+    import sqlite3
+
+    from fixture import build_fixture
+
+    from poland_transit_mcp import cli, web
+    monkeypatch.setattr(web, "run", lambda *a, **k: None)
+    monkeypatch.setenv("POLAND_TRANSIT_NO_WARMUP", "1")
+    build_fixture(tmp_path)
+    (tmp_path / "broken.sqlite").write_bytes(b"not a database at all" * 100)
+    other = sqlite3.connect(tmp_path / "foreign.sqlite")
+    other.execute("CREATE TABLE meta (key TEXT, value TEXT)")  # a database, but no city's metadata
+    other.commit()
+    other.close()
+    started = []
+    monkeypatch.setattr("poland_transit_mcp.server.create_server",
+                        lambda pool, calls: started.append(sorted(pool)) or object())
+    cli.main(["--data-dir", str(tmp_path), "--no-download", "--http", "8080"])
+    err = capsys.readouterr().err
+    assert started == [["testowo"]]
+    assert "skipping broken" in err and "skipping foreign" in err and "not a readable city file" in err, err
 
 
 def test_the_host_variable_does_not_stop_stdio(tmp_path, monkeypatch):

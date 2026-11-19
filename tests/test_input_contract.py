@@ -343,3 +343,22 @@ def test_a_refused_call_logs_at_most_five_argument_places(server, caplog):
 ])
 def test_a_final_newline_does_not_pass_a_pattern(server, name, args, words):
     refused(server, name, args, *words)
+
+
+def test_an_unknown_resource_or_prompt_never_reaches_the_log(server, caplog, capsys):
+    import logging
+
+    from mcp.shared.exceptions import MCPError
+    secret = "SECRET-HOME-ADDRESS-12"
+
+    async def go():
+        async with Client(server) as c:
+            for ask in (lambda: c.read_resource(f"credits://{secret}"), lambda: c.read_resource(f"file:///{secret}"),
+                        lambda: c.get_prompt(secret)):
+                with pytest.raises(MCPError):
+                    await ask()
+    with caplog.at_level(logging.DEBUG):
+        anyio.run(go)
+    logged = caplog.text + capsys.readouterr().err
+    assert "resource read was refused" in logged and "ValueError at" in logged, logged[:600]  # still logged, by kind
+    assert secret not in logged and "Traceback" not in logged, logged[:600]

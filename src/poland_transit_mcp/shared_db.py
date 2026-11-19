@@ -12,6 +12,19 @@ import threading
 from pathlib import Path
 
 
+def read_only_uri(path: Path) -> str:
+    """The SQLite URI that opens `path` read-only. The path is percent-encoded: a `?` or `#` in it, written as it
+    is, would end the file name there and drop `mode=ro`, so another file would be opened, and opened writable."""
+    return Path(path).absolute().as_uri() + "?mode=ro"
+
+
+def connect_read_only(path: Path, **kw) -> sqlite3.Connection:
+    """A connection that cannot change the file: opened read-only, and with query_only set as well."""
+    conn = sqlite3.connect(read_only_uri(path), uri=True, **kw)
+    conn.execute("PRAGMA query_only = ON")
+    return conn
+
+
 class Rows(list):
     """A statement's rows, read in full; `fetchone` and `fetchall` as on a cursor."""
 
@@ -29,7 +42,7 @@ class SharedConnection:
 
     @classmethod
     def read_only(cls, path: Path) -> "SharedConnection":
-        return cls(sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False))
+        return cls(connect_read_only(path, check_same_thread=False))
 
     def execute(self, sql: str, params=()) -> Rows:
         with self._lock:

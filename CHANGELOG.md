@@ -2,6 +2,28 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Security
+- **DNS rebinding is stopped on every loopback address.** The MCP SDK checked the Host and Origin headers by itself only when the server was bound to exactly `127.0.0.1`, `localhost` or `::1`. Bound to another loopback address (`--host 127.0.0.2`, or `127.1`), it checked nothing, so a web page that pointed its own name at that address could call the tools. The check is now always set by the server: on for every loopback address, and explicitly off for any other address (behind a gateway the server cannot know the gateway's name; it warns at start, as before). The start-up warning no longer calls `127.0.0.2` "not loopback".
+- **`--http` answers POST only.** Each reply comes in the POST's own response (stateless, JSON), so the server never sends anything on a GET stream, but the SDK opened one for every GET and held it open for ever: a few thousand idle ones used up the process's file descriptors and every later call timed out. GET and DELETE on `/mcp` are now answered 405 (`Allow: POST`).
+- **A limit on HTTP connections.** New `--max-connections N` (`POLAND_TRANSIT_MAX_CONNECTIONS`, default 100): past N connections or requests at once uvicorn answers 503, and a connection idle for 5 s is closed.
+- **The log keeps the caller's text out in more places.** A failed resource read logged the URI the caller sent, an unknown prompt name was logged inside a full traceback, and a refused Host or Origin header was logged in full. Each is now logged by the kind of failure and the place it was raised, without the caller's text, as tool calls already were.
+- **City files open read-only whatever their path.** The read-only SQLite address was built from the path as it is, so a `?` or `#` in the data directory's path cut the file name short and dropped `mode=ro`: another file was opened, or created, writable. The path is now percent-encoded, and the connection is also set to `query_only`. The build's check of the current file (`<city>.sqlite`) and the measuring scripts use the same.
+- **Downloads follow redirects to https only**, and a whole download has a deadline (one hour; 30 minutes for a city file) on top of the timeout for each network wait, so a server that sends a byte now and then cannot hold it for ever. A redirect to plain http or ftp, where anyone on the path could change the file, is refused.
+- **A downloaded city file is unpacked into a new temporary file of its own** in the data directory (created exclusively, not named `*.sqlite`), which replaces the city file only when complete and is deleted when the unpack fails. Before, it was written to a fixed `<city>.sqlite.part` name, which followed a link planted there and was left behind after a failure.
+- **CI installs exactly the locked versions.** `uv.lock` is committed, and every workflow runs `uv sync --locked`. Before, each run took the newest release of every dependency, including the data build, which held a token that can write to the data release.
+- **The data workflow's write token is in a job of its own.** `city-data.yml` builds each city with a read-only token, and a separate upload job, which checks out nothing and installs nothing, attaches the cities that built.
+- **The engine's build action and maturin are pinned**: `PyO3/maturin-action` to a commit (v1.51.0), and maturin to v1.16.0.
+
+### Fixed
+- **One unreadable `*.sqlite` file no longer stops the server from starting.** A damaged file, or a database that is not a city file, in the data directory raised an error at start-up and nothing was served. It is now named in the log and skipped, and the other cities load.
+
+### Changed
+- **SECURITY.md** no longer says the slowest calls take under 0.6 s: some inputs take seconds, and the server limits the calls it answers at once (`--max-calls`) rather than their time, so a gateway in front of it still needs a time limit per call. The `render_map` limits it named (30 legs, 5,000 points) were removed from the code earlier and are gone from the text. It also describes the new HTTP limits and the download rules, and its list of open items drops the two fixed here.
+- **The engine's first PyPI upload is its source only.** README and docs/PUBLISHING.md promised a prebuilt wheel; until wheels are published, `poland-transit-mcp-engine` from PyPI builds from source and needs a Rust toolchain.
+- `net.urlopen` takes an optional `deadline` (seconds for the whole download; `None` for no limit).
+
 ## 0.5.3 - 2026-11-19
 
 ### Changed

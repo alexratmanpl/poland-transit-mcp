@@ -38,6 +38,8 @@ def test_system_roots_plus_certifi(monkeypatch):
 
 
 def test_every_download_passes_the_context(monkeypatch, tmp_path):
+    handlers = [h for h in net._opener().handlers if isinstance(h, urllib.request.HTTPSHandler)]
+    assert [h._context for h in handlers] == [net.tls_context()]
     seen = []
 
     class Answer:
@@ -52,13 +54,16 @@ def test_every_download_passes_the_context(monkeypatch, tmp_path):
         def read(self, n=-1):
             return b""
 
-    def fake(url, timeout=None, context=None):
-        seen.append(context)
+        def close(self):
+            pass
+
+    def fake(url, timeout=None):
+        seen.append(url)
         return Answer()
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    monkeypatch.setattr(net, "_open", fake)
     assert build_city.download("https://example.invalid/a.zip", tmp_path / "a.zip")
-    assert seen == [net.tls_context()]
+    assert len(seen) == 1
 
 
 def cert_error(code: int, message: str) -> urllib.error.URLError:
@@ -68,10 +73,10 @@ def cert_error(code: int, message: str) -> urllib.error.URLError:
 
 
 def test_a_missing_root_names_the_fix(monkeypatch, tmp_path, capsys):
-    def fail(url, timeout=None, context=None):
+    def fail(url, timeout=None):
         raise cert_error(20, "unable to get local issuer certificate")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    monkeypatch.setattr(net, "_open", fail)
     assert build_city.download("https://example.invalid/a.zip", tmp_path / "a.zip") is False
     assert "point SSL_CERT_FILE at it, or download the file by hand" in capsys.readouterr().out
 
@@ -81,3 +86,34 @@ def test_an_expired_or_wrong_host_certificate_is_only_reported():
         note = net.tls_note(cert_error(code, message))
         assert note == f" (certificate rejected: {message})" and "SSL_CERT_FILE" not in note
     assert net.tls_note(urllib.error.URLError("timed out")) == ""
+
+
+@pytest.mark.parametrize("to, followed", [
+    ("https://mirror.example/a.zip", True),
+    ("http://mirror.example/a.zip", False),  # a downgrade: anyone on the path could change the file
+    ("ftp://mirror.example/a.zip", False),
+    ("HTTP://mirror.example/a.zip", False),
+])
+def test_a_redirect_is_followed_to_https_only(to, followed):
+    handler = next(h for h in net._opener().handlers if isinstance(h, net._HttpsRedirectsOnly))
+    req = urllib.request.Request("https://example.invalid/a.zip")
+    if followed:
+        assert handler.redirect_request(req, None, 302, "Found", {}, to).full_url == to
+    else:
+        with pytest.raises(urllib.error.HTTPError, match="non-https"):
+            handler.redirect_request(req, None, 302, "Found", {}, to)
+
+
+def test_a_download_stops_at_its_deadline(monkeypatch):
+    import io
+    import types
+    clock = iter(range(0, 1000, 10))  # every reading of the clock is 10 s later
+    monkeypatch.setattr(net, "time", types.SimpleNamespace(monotonic=lambda: next(clock)))  # net's clock only
+
+    class Slow(io.BytesIO):
+        pass
+    monkeypatch.setattr(net, "_open", lambda url, timeout: Slow(b"x" * (net.READ_PIECE * 10)))
+    with net.urlopen("https://example.invalid/a", timeout=5, deadline=35) as r, pytest.raises(TimeoutError, match="35 s"):
+        r.read()
+    with net.urlopen("https://example.invalid/a", timeout=5, deadline=None) as r:  # no deadline: the whole body
+        assert len(r.read()) == net.READ_PIECE * 10

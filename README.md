@@ -88,9 +88,10 @@ flowchart LR
 The server prints the search it uses at start (`search engine: rust <version>` or `python`) and reports
 it in `list_cities`.
 
-Adding the engine today needs a Rust toolchain: `--with ./engine` from a clone, or
-`--with "poland-transit-mcp-engine @ git+…#subdirectory=engine"`. Once the engine is published to
-PyPI, `--with poland-transit-mcp-engine` installs a prebuilt wheel with no toolchain needed.
+Adding the engine needs a Rust toolchain: `--with ./engine` from a clone, or
+`--with "poland-transit-mcp-engine @ git+…#subdirectory=engine"`. The first upload of
+`poland-transit-mcp-engine` to PyPI is its source only, so `--with poland-transit-mcp-engine` from PyPI also
+builds it from source and needs a Rust toolchain, until prebuilt wheels are published.
 Publishing is an optional, manual step: [docs/PUBLISHING.md](docs/PUBLISHING.md).
 
 ## Observability
