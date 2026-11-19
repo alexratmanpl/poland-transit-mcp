@@ -14,7 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 - **A downloaded city file is unpacked into a new temporary file of its own** in the data directory (created exclusively, not named `*.sqlite`), which replaces the city file only when complete and is deleted when the unpack fails. Before, it was written to a fixed `<city>.sqlite.part` name, which followed a link planted there and was left behind after a failure.
 - **CI installs exactly the locked versions.** `uv.lock` is committed, and every workflow runs `uv sync --locked`. Before, each run took the newest release of every dependency, including the data build, which held a token that can write to the data release.
 - **The data workflow's write token is in a job of its own.** `city-data.yml` builds each city with a read-only token, and a separate upload job, which checks out nothing and installs nothing, attaches the cities that built.
-- **The engine's build action and maturin are pinned**: `PyO3/maturin-action` to a commit (v1.51.0), and maturin to v1.16.0.
+- **The engine's build action and maturin are pinned**: `PyO3/maturin-action` to a commit (v1.51.0), and maturin to v1.16.0. The PyPI publish action is pinned to a commit too (`pypa/gh-action-pypi-publish` v1.14.3), as it runs with the upload token.
 
 ### Fixed
 - **One unreadable `*.sqlite` file no longer stops the server from starting.** A damaged file, or a database that is not a city file, in the data directory raised an error at start-up and nothing was served. It is now named in the log and skipped, and the other cities load.

@@ -12,7 +12,10 @@ trust boundary is **data files and upstream feeds**:
 
 - **City files are trusted input.** They are loaded into native code (SciPy, the optional Rust engine) and are
   not checked against a checksum or signature. Build them yourself, or take them only from a source you control.
-  Walking graphs are validated before use, and a city file is never loaded from the caller's working directory.
+  Walking graphs are validated before use: their structure, and their coordinates (within the city file's box
+  ± 0.5°, on the globe, a snapping grid of at most 4 million cells). A city file is never loaded from the caller's
+  working directory. The GTFS build refuses a feed file with a line over 4 MB or over 8 GB unpacked; that feed is
+  marked broken and nothing of it is kept.
 - **Downloads** (`download`, the server's auto-download, `POLAND_TRANSIT_DATA_URL`, `--from`) fetch files over
   the network. Do not point them at hosts you do not trust. A redirect is followed only to an https address, and a
   whole download has a deadline (30 minutes for a city file). A city file is unpacked into a new temporary file of
@@ -27,7 +30,8 @@ trust boundary is **data files and upstream feeds**:
   are served at once (more get 503), and a connection idle for 5 s is closed.
 - **Tool answers contain third-party text** (OpenStreetMap names, feed descriptions). Clients and models should
   treat it as data, never as instructions.
-- **`--live gdansk`** makes outbound requests to ZTM Gdańsk. It is off by default.
+- **`--live gdansk`** makes outbound requests to ZTM Gdańsk. It is off by default. It has one 2.5 s deadline per
+  call, at most 24 fetches at once, and stop ids from the feed are URL-quoted.
 
 ## What a caller can send
 
@@ -48,8 +52,10 @@ Before anyone outside your machine can reach it (`--http` behind a gateway), the
 
 - **authentication** of every caller;
 - **a rate limit** per caller;
-- **a time limit per call**: most calls take well under a second, but the server sets no upper bound, some inputs
-  can take seconds of CPU, and a call keeps running after the gateway gives up on it;
+- **a time limit per call**: most calls take well under a second (station names resolve from an index), but the
+  server sets no upper bound, a call keeps running after the gateway gives up on it, and a call may wait up to 5 s
+  for room in the memory budget before it builds a date (the budget counts dates held by calls in flight and stays
+  a soft target);
 - **a body limit near 64 kB** (a normal call is under 2 kB, the largest, `plan_stations` with 40 stations at their longest, about 10 kB; the
   server itself accepts up to 4 MB).
 
