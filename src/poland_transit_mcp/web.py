@@ -86,9 +86,14 @@ def app(server, host: str):
                                                transport_security=transport_security(host), host=host))
 
 
+def config(server, host: str, port: int, max_connections: int | None = DEFAULT_MAX_CONNECTIONS):
+    """The uvicorn settings `run` serves with (the tests start a real server from them)."""
+    import uvicorn
+    return uvicorn.Config(app(server, host), host=host, port=port, limit_concurrency=max_connections,
+                          timeout_keep_alive=KEEP_ALIVE_S, log_level=server.settings.log_level.lower())
+
+
 def run(server, host: str, port: int, max_connections: int | None = DEFAULT_MAX_CONNECTIONS) -> None:
     import anyio
     import uvicorn
-    config = uvicorn.Config(app(server, host), host=host, port=port, limit_concurrency=max_connections,
-                            timeout_keep_alive=KEEP_ALIVE_S, log_level=server.settings.log_level.lower())
-    anyio.run(uvicorn.Server(config).serve)
+    anyio.run(uvicorn.Server(config(server, host, port, max_connections)).serve)
