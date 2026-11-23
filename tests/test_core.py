@@ -185,6 +185,11 @@ def test_one_unreadable_city_file_is_skipped(tmp_path, monkeypatch, capsys):
     other.execute("CREATE TABLE meta (key TEXT, value TEXT)")  # a database, but no city's metadata
     other.commit()
     other.close()
+    wal = sqlite3.connect(tmp_path / "journalled.sqlite")  # its header keeps WAL mode after it is closed
+    wal.execute("PRAGMA journal_mode = WAL")
+    wal.execute("CREATE TABLE meta (key TEXT, value TEXT)")
+    wal.commit()
+    wal.close()
     started = []
     monkeypatch.setattr("poland_transit_mcp.server.create_server",
                         lambda pool, calls: started.append(sorted(pool)) or object())
@@ -192,6 +197,7 @@ def test_one_unreadable_city_file_is_skipped(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert started == [["testowo"]]
     assert "skipping broken" in err and "skipping foreign" in err and "not a readable city file" in err, err
+    assert "skipping journalled: journalled.sqlite is in WAL mode" in err, err
 
 
 def test_the_host_variable_does_not_stop_stdio(tmp_path, monkeypatch):

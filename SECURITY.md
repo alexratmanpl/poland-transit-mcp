@@ -14,7 +14,10 @@ trust boundary is **data files and upstream feeds**:
   not checked against a checksum or signature. Build them yourself, or take them only from a source you control.
   Walking graphs are validated before use: their structure, and their coordinates (within the city file's box
   ± 0.5°, on the globe, a snapping grid of at most 4 million cells). A city file is never loaded from the caller's
-  working directory. The GTFS build refuses a feed file with a line over 4 MB or over 8 GB unpacked; that feed is
+  working directory. It is opened read-only and immutable: SQLite reads the file alone, never a `-wal` or
+  `-journal` file beside it, and writes nothing next to it; a file in WAL mode is refused. So a city file must be
+  replaced by renaming a new file over it (as the build and `download` do), never changed in place while a server
+  reads it. The GTFS build refuses a feed file with a line over 4 MB or over 8 GB unpacked; that feed is
   marked broken and nothing of it is kept.
 - **Downloads** (`download`, the server's auto-download, `POLAND_TRANSIT_DATA_URL`, `--from`) fetch files over
   the network. Do not point them at hosts you do not trust. A redirect is followed only to an https address, and a
