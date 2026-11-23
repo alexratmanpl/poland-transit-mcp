@@ -24,10 +24,10 @@ jobs:
         # scripts/zakopane_gtfs.py are not published and the timetable's terms are unclear.
         city: [gdansk, krakow, wroclaw, poznan, torun, lublin, katowice, zakopane]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           persist-credentials: false  # no token in .git/config while third-party data is parsed
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
         with:
           python-version: "3.13"
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
