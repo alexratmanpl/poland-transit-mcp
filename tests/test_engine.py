@@ -63,3 +63,22 @@ def test_earliest_arrival_at_every_stop_is_the_same(city_dir, monkeypatch):
     got = run(rust_city)
     assert got == expected
     assert sum(v < INF for v in got[0]) > 2  # the morning search reaches beyond the two stops it starts from
+
+
+def test_compare_engines_compares_plan_stations_on_a_national_layer(tmp_path):
+    """scripts/compare_engines.py on a national layer (no map, so no points): it crashed choosing from no stops;
+    it now runs plan_stations between stations on both searches."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from fixture import build_national_fixture
+    build_national_fixture(tmp_path)
+    script = Path(__file__).resolve().parents[1] / "scripts" / "compare_engines.py"
+    out = subprocess.run([sys.executable, str(script), "--cities", "poland,alfa", "--plans", "15",
+                          "--date", "2026-11-10", "--data-dir", str(tmp_path)], capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    nat = next(line for line in out.stdout.splitlines() if line.startswith("poland on"))
+    assert "identical answers 15/15" in nat and "plan_stations" in nat
+    assert int(nat.split("(")[1].split(" ")[0]) > 0  # some answers hold an itinerary: the comparison saw trains
+    assert "alfa on 2026-11-10: identical answers 15/15" in out.stdout

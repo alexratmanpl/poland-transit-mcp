@@ -182,7 +182,8 @@ class City:
     @staticmethod
     def feed_dates(f: dict) -> dict:
         """A feed's dates: published (ISO, from an explicit publication note, else the server's Last-Modified, else
-        the newest file date in the zip), retrieved, valid_from and valid_to. None where unknown."""
+        the newest file date in the zip, or in the folder of a feed made locally), retrieved, valid_from and
+        valid_to. None where unknown."""
         published = f.get("published") or f.get("last_modified")
         if published:
             try:
@@ -190,7 +191,7 @@ class City:
             except (TypeError, ValueError):
                 pass
         if not published and f.get("files_dated"):
-            published = f'{f["files_dated"]} local (file dates in the zip)'
+            published = f'{f["files_dated"]} local (newest file date in the feed)'
         return {"published": published, "retrieved": f.get("downloaded_at"),
                 "valid_from": fmt_date(f["start_date"]) if f.get("start_date") else None,
                 "valid_to": fmt_date(f["end_date"]) if f.get("end_date") else None}

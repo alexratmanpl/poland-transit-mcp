@@ -158,6 +158,17 @@ def test_files_without_the_new_meta_take_notes_from_config(tmp_path):
     assert poland.notes == CITIES["poland"].notes and poland.timezone == "Europe/Warsaw"
 
 
+def test_zakopanes_name_and_notes_claim_nothing_about_what_a_file_holds():
+    """A builder may add trips to the Zakopane set (and a build without the transcription has no timetable): its name
+    and notes say what this project's transcription covers, not what a file holds; list_cities' features and feeds
+    say that, from the file."""
+    from poland_transit_mcp.config import CITIES
+    z = CITIES["zakopane"]
+    text = " ".join(z.notes)
+    assert z.name == "Zakopane" and "not included" not in text
+    assert "This project's transcription covers the town's lines 10–18, not the county lines" in text
+
+
 def test_plan_trip_names_its_layer_when_several_are_loaded(built, tmp_path):
     from test_intercity import END, START
     alfa, beta, poland = build_national_fixture(tmp_path / "pl")

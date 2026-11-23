@@ -21,6 +21,10 @@ CENTRE_PER_KM, CENTRE_MAX = 1.5, 30
 FAR_M = 10_000  # a name resolved farther than this from the centre is said so in the answer's note
 CLOSE = 5  # another place this close in score (and over 1 km away) is named in the note
 NEARER_GAP = 50  # with a far match, the best nearer place within this many points is named
+# "Rynek Główny" is the main Rynek: a name that is the query and then "Główny" counts as the query itself. Only the
+# masculine form: "Główna" is also a street ("Sarnów Główna" is a stop on it), and with it "Warszawa" in Warszawa
+# matched Warszawa Główna, not Warszawa Centralna.
+MAIN_OF = " glowny"
 _MAIN = ("centralna", "glowny", "glowna", "glowne")  # the main station's name: "<city> Główny", or "<city>" alone
 
 
@@ -88,7 +92,7 @@ def _scored(city: City, query: str | None, near: list[float] | None, radius_m: f
         score = _BOOST.get(kind, 0) + (15 if extra and '"wikipedia"' in extra else 0)
         if q:
             core = norm[len(own):] if norm.startswith(own) else norm
-            if norm == q or core == q:
+            if norm == q or core == q or norm == q + MAIN_OF:
                 score += 100
             elif norm.startswith(q) or core.startswith(q):
                 score += 50

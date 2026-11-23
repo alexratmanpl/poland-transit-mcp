@@ -44,6 +44,12 @@ def named(city_dir, tmp_path_factory) -> City:
     place("landmark", "Ratusz", [c_lat - 15 * KM_SOUTH, c_lon], {"wikipedia": "pl:Ratusz"})
     # "Kopiec": only 20 km out
     place("landmark", "Kopiec", [c_lat - 20 * KM_SOUTH, c_lon])
+    # "Targ": a better-known square of that bare name 15 km out (like Skawina's Rynek), "Targ Główny" in the centre
+    place("landmark", "Targ", [c_lat - 15 * KM_SOUTH, c_lon], {"wikipedia": "pl:Targ"})
+    place("attraction", "Targ Główny", at(3, 3), {"wikipedia": "pl:Targ Główny"})
+    # "Targowa Główna": a street "Główna" after the name is not the main one
+    place("stop", "Targowa Główna", at(3, 4), {"stop_id": "T:TG"})
+    place("landmark", "Targowa", [c_lat - 15 * KM_SOUTH, c_lon], {"wikipedia": "pl:Targowa"})
     # "Brama": two of the same kind, as far from the centre, 2 km apart
     place("landmark", "Brama", at(12, 0))
     place("landmark", "Brama", at(2, 14))
@@ -67,6 +73,14 @@ def test_of_two_places_of_one_name_the_nearer_wins(named):
     p, label, hit = resolve_point(named, "Ratusz")
     assert label == "Ratusz" and list(p) == pytest.approx(at(4, 2))
     assert "match_note" not in hit  # the far one scores clearly lower
+
+
+def test_the_main_one_of_a_name_beats_a_far_place_of_the_bare_name(named):
+    # Kraków "Rynek": Rynek Główny, not the square of Skawina 13.5 km out (0.5.6 matched that, with a note)
+    _, label, hit = resolve_point(named, "Targ")
+    assert label == "Targ Główny" and "match_note" not in hit
+    assert find_places(named, "Targ")[0]["name"] == "Targ Główny"
+    assert resolve_point(named, "Targowa")[1] == "Targowa"  # "Główna" is a street's name: no rule for it
 
 
 def test_a_far_match_says_how_far_from_the_centre(named):
