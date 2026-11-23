@@ -4,10 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 
 ## Unreleased
 
+### Fixed
+- **A bare place name no longer lands in another town.** A name in `plan_trip`, `walk_route` or `stops_near` took the best-scored place of the whole file, where an exact name scored the same 20 km out as in the centre: "Rondo" in Katowice was a road named just "Rondo" near Kobiór, 23 km south, not the stop "Katowice Rondo", and the trip took 64 minutes instead of a 16-minute walk. Among comparable matches the one nearer the city's centre now wins (its main station, or the middle of the file's box), and the city's own name before a stop's name is no part of it. When the match is over 10 km from the centre, or another place over 1 km away scored about the same, `note` says so in one line, with the other place's name. `find_places` without `near` ranks the same way. On the weekly files, Katowice "Rondo", "Rynek" and "Teatr" now give Katowice Rondo, Katowice Rynek and Teatr Bez Sceny (0.3–0.9 km from the station) instead of places 15–49 km out; "Ratusz" in Katowice and Kraków, and "Rynek" in Kraków, still match a town hall or square of another town in the area, now with a note that names a nearer place.
+- **`find_places` on a national layer reads the index of folded names**, as `resolve_stops` has since 0.5.4, instead of folding every stop's name per call: about 12 ms → 0.05 ms per call on the national layer (9,400 stops), with the same stations in the same order.
+
 ### Added
 - **A regression test for idle connections** against a real uvicorn server (`tests/test_http_connections.py`): 110 sockets that never send a request must not turn a call away. `web.config` returns the uvicorn settings `--http` runs with. The first postmortem, [docs/postmortems/2026-11-19-idle-connections-503.md](docs/postmortems/2026-11-19-idle-connections-503.md), explains why 0.5.4 needed it.
 
 ### Changed
+- **`plan_trip` and `plan_stations` state their order**: earliest arrival first; with `arrive_by`, latest departure first. Both searches, in both engines, already ranked options so (one ranking, in Python, after the search); only the descriptions are new.
 - **One release workflow for both packages.** `engine-wheels.yml` is now `release.yml`: it also builds the server (`poland-transit-mcp`), publishes only from a release tag that matches the server's version, and uploads both packages with PyPI Trusted Publishing after a maintainer approves the `pypi` environment. Files PyPI already has for a version are skipped, so a release first uploaded by hand gets the engine's wheels added. docs/PUBLISHING.md describes the one-time setup (a trusted publisher per package) and the steps.
 
 ## 0.5.5 - 2026-11-19

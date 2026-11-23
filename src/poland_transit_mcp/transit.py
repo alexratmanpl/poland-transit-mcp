@@ -8,7 +8,7 @@ import numpy as np
 from .errors import Refused
 from .city import City
 from .geo import LatLon, haversine, pt, simplify
-from .places import resolve_point
+from .places import notes_of, resolve_point
 from .text import fold, quoted
 from .timetable import NO_DROPOFF, NO_PICKUP, Stop, headway_fields, route_color
 from .timeutil import LocalTime, fmt_date, fmt_wall, now_local
@@ -55,7 +55,7 @@ MAX_PLATFORMS = 20  # stops_near: the most platforms one answer lists, nearest f
 def stops_near(city: City, point, max_walk_min: float = 10, date: int | None = None) -> dict:
     at, label, resolved = resolve_point(city, point)
     if not city.has_transit:
-        return {"point": pt(*at), "stops": [], "note": city.transit_note()}
+        return {"point": pt(*at), "stops": [], "note": "; ".join(filter(None, [*notes_of(resolved), city.transit_note()])) or None}
     d = date or now_local().date
     w = walk_to_stops(city, at, min(max_walk_min, 30) * 60)
     out = []
@@ -66,6 +66,7 @@ def stops_near(city: City, point, max_walk_min: float = 10, date: int | None = N
     return {"point": pt(*at), "resolved_from": resolved["name"] if resolved else None, "date": fmt_date(d),
             "max_walk_min": max_walk_min, "stops": out,
             "note": "; ".join(filter(None, [
+                *notes_of(resolved),
                 f"the nearest {MAX_PLATFORMS} of {len(w.stops)} platforms within {max_walk_min:g} min; for more stops "
                 'use find_places with near and kinds ["stop"]' if len(w.stops) > MAX_PLATFORMS else None,
                 city.transit_note(d) if out else f"no stops within {max_walk_min} min walk"])) or None}
@@ -95,14 +96,14 @@ def walk_path(city: City, a: LatLon, b: LatLon, max_m: float = 15000) -> WalkPat
 
 
 def walk_route(city: City, frm, to) -> dict:
-    A, a_label, _ = resolve_point(city, frm)
-    B, b_label, _ = resolve_point(city, to)
+    A, a_label, ra = resolve_point(city, frm)
+    B, b_label, rb = resolve_point(city, to)
     r = walk_path(city, A, B)
     if r is None:
         return {"from": {"name": a_label, "at": pt(*A)}, "to": {"name": b_label, "at": pt(*B)}, "path": None,
-                "note": "no walking connection found within 15 km"}
+                "note": "; ".join([*notes_of(ra, rb), "no walking connection found within 15 km"])}
     bridges = sum(1 for i, f in enumerate(r.flags) if f & FLAG_BRIDGE and not (i > 0 and r.flags[i - 1] & FLAG_BRIDGE))
-    notes = []
+    notes = notes_of(ra, rb)
     if r.snap[0] > 60:
         notes.append(f"start is {round(r.snap[0])} m from the nearest mapped way")
     if r.snap[1] > 60:
@@ -136,6 +137,14 @@ def resolve_stops(city: City, ref: str) -> list[Stop]:
             raise Refused(f'no stop named {quoted(ref)} in {city.id}; stops with that in their name: '
                           f'{", ".join(within[:8])}; pass one of these names')
     return found
+
+
+def stations_named(city: City, query: str) -> list[Stop]:
+    """find_places on a national layer: one stop of each name (its first by index) whose folded name contains the
+    query's, those starting with it first, then shorter names. Read from the timetable's index of folded names."""
+    q = fold(query)
+    hits = city.tt.first_stops_containing(q).values()
+    return [s for _, s in sorted(hits, key=lambda ks: (not ks[0].startswith(q), len(ks[1].name), ks[1].name))]
 
 
 def scheduled_departures(city: City, stops: list[Stop], when: LocalTime, line: str | None = None, limit: int = 10,

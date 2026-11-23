@@ -24,6 +24,12 @@ For people and for agents. The [Reference](#reference) at the end is generated f
   question, so a session needs no first call. `list_cities` gives the details (area, features, timetable dates).
 - **Points** are `[lat, lon]`. A bbox is `[minLat, minLon, maxLat, maxLon]`; map tools take at most about 18 km
   across. `from`, `to` and `point` also take a place name (Polish names match best; diacritics are optional).
+  Among comparable matches the one nearer the city's centre wins (its main station: "<city> Główny" or
+  "Centralna", or the station named after the city; else the middle of the file's box), and the city's name before
+  a stop's name is no part of it ("Rondo" in Katowice is the stop "Katowice Rondo"). When the match is over 10 km
+  from the centre, or another place over 1 km away scored about the same, the answer's `note` says which place was
+  taken, how far from the centre, and the other place (`"Ratusz" matched Ratusz (landmark), 25 km from the centre
+  (Katowice); nearer: Dawny ratusz (landmark, 5.6 km)`). `find_places` without `near` ranks the same way.
 - **Times** are local (Europe/Warsaw): `HH:MM` or `YYYY-MM-DD HH:MM`; dates `YYYY-MM-DD`, real calendar days of
   2000-2100. A time on another day than the one asked carries its date.
 - **Answers** come as `structuredContent` matching the tool's `outputSchema`, and as the same JSON in the first text
@@ -299,7 +305,7 @@ Answer:
 
 ### `plan_trip`
 
-**Plan a trip.** Door-to-door trip by public transport on the scheduled timetable: walk, ride (with changes), walk. Up to 3 options, each with its legs: times, line, direction, stops, operator. Leaves now, at `depart_at`, or arrives by `arrive_by`. For a trip to another listed city set `to_city`: the plan adds trains or FlixBus coaches between the cities (train, platform, track) and city transport at both ends. Each option has a `trip` value that render_map draws; it stays valid while the timetable data is the same.
+**Plan a trip.** Door-to-door trip by public transport on the scheduled timetable: walk, ride (with changes), walk. Up to 3 options, earliest arrival first (arrive_by: latest departure first), each with its legs: times, line, direction, stops, operator. Leaves now, at `depart_at`, or arrives by `arrive_by`. For a trip to another listed city set `to_city`: the plan adds trains or FlixBus coaches between the cities (train, platform, track) and city transport at both ends. Each option has a `trip` value for render_map, valid while the timetable data is the same.
 
 | Argument | Type | Default | Limits | Description |
 |---|---|---|---|---|
@@ -326,7 +332,7 @@ Answer:
 
 ### `plan_stations`
 
-**Plan between stations.** Trains and coaches between stations of a national layer, with no walk or city transport added: for a traveller who starts or ends at a station, and for stations outside the listed cities (also abroad). `from` and `to` are lists of stops, each with the minutes needed there before boarding or after arriving, e.g. [{"stop": "Kraków Główny", "minutes": 15}]; each option's depart and arrive include those minutes. Up to 3 options: the best connections, not every train (for all trains between two stations use departures with `to`). FlixBus stops have their own names (e.g. "Wroclaw, Bus Station"): find them with find_places on the layer.
+**Plan between stations.** Trains and coaches between stations of a national layer, with no walk or city transport added: for a traveller who starts or ends at a station, and for stations outside the listed cities (also abroad). `from` and `to` are lists of stops, each with the minutes needed there before boarding or after arriving, e.g. [{"stop": "Kraków Główny", "minutes": 15}]; each option's depart and arrive include those minutes. Up to 3 options, earliest arrival first (arrive_by: latest departure first): the best connections, not every train (for all trains between two stations use departures with `to`). FlixBus stops have their own names (e.g. "Wroclaw, Bus Station"): find them with find_places on the layer.
 
 | Argument | Type | Default | Limits | Description |
 |---|---|---|---|---|

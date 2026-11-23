@@ -26,7 +26,7 @@ from .errors import Refused
 from . import telemetry
 from .city import City
 from .geo import haversine, pt, simplify
-from .places import resolve_point
+from .places import notes_of, resolve_point
 from .plan import ACCESS_SECS, WALK_FIRST_MAX_M, WALK_FIRST_SLACK_S, Itin, TLeg, _length, _to_itin
 from .raptor import INF, RJourney, raptor, raptor_all
 from .timetable import NO_DROPOFF, NO_PICKUP, Stop, headway_fields, route_color
@@ -132,8 +132,9 @@ def plan_intercity(a: City, b: City, nat: City, frm, to, depart_at: str | None =
     for c in (a, b):
         if not c.has_transit:
             raise Refused(f"{c.id} has no timetable data, so it cannot be joined to trains and coaches")
-    A, a_label, _ = resolve_point(a, frm)
-    B, b_label, _ = resolve_point(b, to)
+    A, a_label, ra = resolve_point(a, frm)
+    B, b_label, rb = resolve_point(b, to)
+    matched = notes_of(ra, rb)
     date = when.date
     rounds = max(0, min(max_transfers if max_transfers is not None else 2, 2)) + 1
     src = Side(a, A, a_label, _walk(a, A), gateways(a, nat))
@@ -160,7 +161,8 @@ def plan_intercity(a: City, b: City, nat: City, frm, to, depart_at: str | None =
         if t < INF:
             ready[i] = t + STATION_SECS
     if not ready:
-        return _empty(a, b, A, B, a_label, b_label, back, date, when.secs, f"no station of {first.city.id} is reachable")
+        return _empty(a, b, A, B, a_label, b_label, back, date, when.secs,
+                      "; ".join([f"no station of {first.city.id} is reachable", *matched]))
     station_of = {n: i for i, g in enumerate(first.gws) for n in g.nat}
     last_nat = {n for g in last.gws for n in g.nat}
 
@@ -252,7 +254,7 @@ def plan_intercity(a: City, b: City, nat: City, frm, to, depart_at: str | None =
                                  f"window of {fmt_date(date)} (this day and the night after)")
     notes = [n for c in (a, b) for n in c.intercity_notes]
     notes += [n for c in (a, nat, b) for n in (c.partial_note(date), c.transit_note(date)) if n]
-    return {**head, "itineraries": options, "assumptions": ASSUMPTIONS, "note": "; ".join(filter(None, [note, *notes])) or None}
+    return {**head, "itineraries": options, "assumptions": ASSUMPTIONS, "note": "; ".join(filter(None, [note, *matched, *notes])) or None}
 
 
 def _best_boarding(side: Side, cands: list[tuple[int, int, int]], back: bool, date: int,

@@ -225,6 +225,16 @@ class Timetable:
         """The stop names (as stored) whose folded name contains `part`: one pass over the distinct names."""
         return {s.name for k in self._name_keys if part in k for s in self._by_name[k]}
 
+    def first_stops_containing(self, part: str) -> dict[str, tuple[str, Stop]]:
+        """Each stop name (as stored) whose folded name contains `part`: {name: (folded name, its first stop by
+        index)}. One pass over the distinct folded names, none folded again (find_places on a national layer)."""
+        out: dict[str, tuple[str, Stop]] = {}
+        for k in self._name_keys:
+            if part in k:
+                for s in self._by_name[k]:  # by index: the first stop of each name is kept
+                    out.setdefault(s.name, (k, s))
+        return out
+
     def approx_bytes(self) -> int:
         """Estimated memory, counted from what is loaded: ~1.9 KB per stop and per stop pattern for the
         base structures, the engine's foot transfers, and each date's own size (Day.nbytes: its trips and the
