@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.7 - 2026-11-23
 
 ### Fixed
 - **"Rynek" in Kraków is Rynek Główny.** A place named the query followed by "Główny" now counts as an exact match of the query (the main one of that name), as the city's own name before a stop's name already does not count. 0.5.6 matched the square of Skawina (a landmark named just "Rynek", with Wikipedia), 13.5 km from Kraków Główny, with a note naming a nearer place; now Rynek Główny, 1.1 km, with no note. Only the masculine form: "Główna" is also a street, and with it "Warszawa" in Warszawa matched Warszawa Główna instead of Warszawa Centralna. Of 31 names (30 common words and the city's own) resolved without a point in each of the nine weekly city files, four answers changed, all for "Dworzec": Toruń's bus station (1.8 km from the centre) → the stop Dworzec Główny (0.1 km); Wrocław's bus station → the stop Dworzec Główny (both 0.2 km); in Gdańsk the landmark "Dworzec PKP Gdańsk Główny" → the stop Dworzec Główny beside it. Katowice "Rondo", "Rynek" and "Teatr" still give Katowice Rondo, Katowice Rynek and Teatr Bez Sceny.
