@@ -82,9 +82,11 @@ def download(url: str, dest: Path) -> bool:
 
 
 # ---------------------------------------------------------------- OSM tag rules
+# "corridor": an indoor walkway, such as the halls through Katowice station from its platforms to the city side
+# (without them a walk from the station to the centre went round by the next street west, 1,712 m instead of 1,265 m)
 WALK_HW = {"footway", "path", "pedestrian", "steps", "living_street", "residential", "service", "unclassified", "tertiary",
            "tertiary_link", "secondary", "secondary_link", "primary", "primary_link", "trunk", "trunk_link", "track",
-           "cycleway", "bridleway", "road"}
+           "cycleway", "bridleway", "road", "corridor"}
 NO = {"no", "private"}
 YES = {"yes", "designated", "permissive", "destination"}
 
