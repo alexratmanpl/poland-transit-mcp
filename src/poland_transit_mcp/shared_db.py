@@ -14,12 +14,34 @@ from pathlib import Path
 
 def read_only_uri(path: Path) -> str:
     """The SQLite URI that opens `path` read-only. The path is percent-encoded: a `?` or `#` in it, written as it
-    is, would end the file name there and drop `mode=ro`, so another file would be opened, and opened writable."""
-    return Path(path).absolute().as_uri() + "?mode=ro"
+    is, would end the file name there and drop `mode=ro`, so another file would be opened, and opened writable.
+
+    `immutable=1`: SQLite reads the file alone. It does not read a `-wal` or `-journal` file beside it (whose
+    pages would override the file's own) and creates no `-shm` or `-wal` file next to it. A city file is never
+    changed in place: the build and `download` write a new file and rename it over the old one, and a
+    connection already open keeps reading the file it opened."""
+    return Path(path).absolute().as_uri() + "?mode=ro&immutable=1"
+
+
+def refuse_wal_mode(path: Path) -> None:
+    """Refuses a file whose header says WAL mode (bytes 18 and 19 are 2). Its latest pages may live in a `-wal`
+    file, which the connection does not read, so the file alone may be out of date or half checkpointed; other
+    SQLite tools would read the `-wal` and show something else. The build never leaves a file in WAL mode.
+    A file that cannot be read, or is not an SQLite file, is left to sqlite3 to report."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(100)
+    except OSError:
+        return
+    if head.startswith(b"SQLite format 3\x00") and len(head) >= 20 and 2 in (head[18], head[19]):
+        raise ValueError(f"{Path(path).name} is in WAL mode: part of its data may be in a separate -wal file, "
+                         "which is not read; rebuild or re-download the city file")
 
 
 def connect_read_only(path: Path, **kw) -> sqlite3.Connection:
-    """A connection that cannot change the file: opened read-only, and with query_only set as well."""
+    """A connection that cannot change the file: opened read-only and immutable (read_only_uri), with query_only
+    set as well. A file in WAL mode is refused (refuse_wal_mode)."""
+    refuse_wal_mode(path)
     conn = sqlite3.connect(read_only_uri(path), uri=True, **kw)
     conn.execute("PRAGMA query_only = ON")
     return conn

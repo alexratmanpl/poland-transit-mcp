@@ -13,8 +13,13 @@ trust boundary is **data files and upstream feeds**:
 - **City files are trusted input.** They are loaded into native code (SciPy, the optional Rust engine) and are
   not checked against a checksum or signature. Build them yourself, or take them only from a source you control.
   Walking graphs are validated before use: their structure, and their coordinates (within the city file's box
-  ± 0.5°, on the globe, a snapping grid of at most 4 million cells). A city file is never loaded from the caller's
-  working directory. The GTFS build refuses a feed file with a line over 4 MB or over 8 GB unpacked; that feed is
+  ± 0.5°, on the globe, a snapping grid of at most 4 million cells). So are timetables' stop numbers (from 0 to
+  less than twice the number of stops plus 1000; stop patterns and foot transfers name only stops the file has),
+  as the stop list's length is the largest of them. A city file is never loaded from the caller's
+  working directory. It is opened read-only and immutable: SQLite reads the file alone, never a `-wal` or
+  `-journal` file beside it, and writes nothing next to it; a file in WAL mode is refused. So a city file must be
+  replaced by renaming a new file over it (as the build and `download` do), never changed in place while a server
+  reads it. The GTFS build refuses a feed file with a line over 4 MB or over 8 GB unpacked; that feed is
   marked broken and nothing of it is kept.
 - **Downloads** (`download`, the server's auto-download, `POLAND_TRANSIT_DATA_URL`, `--from`) fetch files over
   the network. Do not point them at hosts you do not trust. A redirect is followed only to an https address, and a
@@ -100,8 +105,6 @@ server's protection: code mode changes how a model uses the tools, not who can o
 From a source-only security review (no confirmed vulnerabilities). Contributions welcome:
 
 - No checksum or signature on downloaded city files, and no cap on the unpacked size.
-- GitHub Actions are pinned by tag, not by commit SHA, except `PyO3/maturin-action` and the artifact actions of
-  `city-data.yml`.
 - `download` does not validate city ids and accepts non-HTTPS base URLs (operator-controlled input).
 - The OTLP endpoint is logged verbatim (strip credentials and query strings).
 - A race between `Timetable.day()`'s cache and the memory accounting (possible stale size; the budget is a soft

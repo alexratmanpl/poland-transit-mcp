@@ -24,6 +24,15 @@ NO_PICKUP = 1
 NO_DROPOFF = 2
 DAY = 86400
 NEXT_DAY_HORIZON = 6 * 3600  # next-day trips starting before this are part of a day's window
+# The stop list is indexed by stop_idx, so its length is the largest index in the file: one far above the number
+# of stops would allocate a list that size (150 million gets the process killed). Built files number their stops
+# from 1 with few gaps: the largest index is at most 1.13x the stop count in the ten cities built so far (the
+# national layer; the cities have none). Larger than twice the count, plus this much for small files, is refused.
+STOP_IDX_SLACK = 1000
+
+
+def malformed(what: str) -> ValueError:
+    return ValueError(f"timetable is malformed ({what}); rebuild or re-download the city file")
 
 
 @dataclass(slots=True)
@@ -184,7 +193,9 @@ class Timetable:
             self.patterns[idx] = Pattern(idx, self.routes[ridx], head or "", d, shape,
                                          tuple(np.frombuffer(stops, "<i4").tolist()), bytes(flags))
         rows = db.execute("SELECT stop_idx, stop_id, code, name, platform, lat, lon, node, snap_m FROM stops").fetchall()
-        max_stop = max((r[0] for r in rows), default=0)
+        min_stop, max_stop = min((r[0] for r in rows), default=0), max((r[0] for r in rows), default=0)
+        if min_stop < 0 or max_stop >= 2 * len(rows) + STOP_IDX_SLACK:
+            raise malformed(f"stop indexes run from {min_stop} to {max_stop} for {len(rows)} stops")
         self.stops = [None] * (max_stop + 1)
         for r in rows:
             s = Stop(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], float(r[8] or 0))
@@ -194,11 +205,19 @@ class Timetable:
             if s is not None:
                 self._by_name.setdefault(fold(s.name), []).append(s)
         self._name_keys = sorted(self._by_name)
+        # a pattern or transfer naming a stop the file does not have would read another list entry (a negative
+        # index counts from the end) or fail later, in the middle of a search
+        known = {r[0] for r in rows}
+        bad = sum(1 for p in self.patterns.values() if not known.issuperset(p.stops))
+        if bad:
+            raise malformed(f"{bad} stop patterns name stops the file does not have")
         for p in self.patterns.values():
             for pos, s in enumerate(p.stops):
                 self.stop_patterns.setdefault(s, []).append((p, pos))
         self.transfers = [[] for _ in range(max_stop + 1)]
         for a, b, w in db.execute("SELECT from_stop, to_stop, walk_s FROM transfers"):
+            if a not in known or b not in known:
+                raise malformed(f"a foot transfer from stop {a} to stop {b}, which the file does not have")
             self.transfers[a].append((b, w))
         self._base_bytes = 1900 * (len(self.stops) + len(self.patterns))
 

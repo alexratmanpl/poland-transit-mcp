@@ -28,12 +28,13 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import sqlite3
 import statistics
 import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+from poland_transit_mcp.shared_db import connect_read_only
 
 # ---- names: printed variants -> one canonical stop -------------------------------------------
 VARIANTS = {
@@ -185,7 +186,7 @@ def main() -> None:
     report.append(f"pages: {len(pages)} (A and B identical cell by cell)")
 
     # ---- stop positions --------------------------------------------------------------------
-    city = sqlite3.connect(f"file:{root / 'cities' / 'zakopane.sqlite'}?mode=ro", uri=True)
+    city = connect_read_only(root / "cities" / "zakopane.sqlite")
     osm_stops = read_osm_stops(root / "work" / "zakopane")
     streets: dict[str, list[tuple[float, float]]] = {}
     for line in (root / "work" / "zakopane" / "hw.geojsonseq").open(encoding="utf-8"):
