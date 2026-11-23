@@ -125,6 +125,36 @@ def test_publication_date_falls_back_to_zip_file_dates(tmp_path):
     assert meta["files_dated"] == "2026-11-13 12:22"
 
 
+def test_a_folder_feed_made_locally_is_dated_by_its_newest_file(tmp_path):
+    """A feed made by a local script (Zakopane's transcription) is a folder with no download: its answers said
+    as_of "unknown" (stops_near, plan_trip) while detail="full" had only validity dates. It is now dated by its
+    newest file, so the short and the full as_of give the same date."""
+    import os
+    import sqlite3
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from fixture import write_gtfs
+    from poland_transit_mcp.build.gtfs import import_feed
+    from poland_transit_mcp.city import City
+    from poland_transit_mcp.config import Feed
+    from poland_transit_mcp.schema import SCHEMA
+
+    write_gtfs(tmp_path / "Z")
+    made = datetime(2026, 11, 18, 8, 8, tzinfo=ZoneInfo("Europe/Warsaw")).timestamp()
+    for f in (tmp_path / "Z").iterdir():
+        os.utime(f, (made - 3600, made - 3600))
+    os.utime(tmp_path / "Z" / "stops.txt", (made, made))  # the newest file
+    db = sqlite3.connect(":memory:")
+    db.executescript(SCHEMA)
+    feed = Feed("Z", "Folder feed", "https://example.invalid/", "CC0", "synthetic test data", local="python make.py")
+    meta = import_feed(db, tmp_path / "Z", feed, download_meta=None)
+    assert meta["status"] == "ok" and meta["files_dated"] == "2026-11-18 08:08"
+    dates = City.feed_dates(meta)
+    assert dates["published"] == "2026-11-18 08:08 local (newest file date in the feed)"
+    assert dates["published"][:10] == "2026-11-18"  # the short as_of (City.provenance)
+
+
 def test_frequency_only_runs_are_expanded_and_labelled(city):
     d = deps(city, "T:MN", 20261110, H(6), limit=20)
     runs = [x for x in d if x["time"] < "07:00"]

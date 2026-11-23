@@ -205,6 +205,12 @@ def _import_feed(db: sqlite3.Connection, path: Path, feed: Feed, snapper: WalkGr
         # ZIP dates carry no time zone; operators write them in local time.
         newest = max(i.date_time for i in src.zip.infolist())
         meta["files_dated"] = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}".format(*newest[:5])
+    elif not meta.get("last_modified"):
+        # A folder made by a local script (Zakopane's transcription): no download, so no other date; its newest
+        # file's modification time, in Polish time as a zip's would be.
+        stamps = [f.stat().st_mtime for f in src.path.iterdir() if f.is_file()]
+        if stamps:
+            meta["files_dated"] = _datetime.fromtimestamp(max(stamps), WARSAW).strftime("%Y-%m-%d %H:%M")
     for f in ("stops.txt", "routes.txt", "trips.txt", "stop_times.txt"):
         if not src.has(f):
             meta["status"] = f"broken (no {f})"

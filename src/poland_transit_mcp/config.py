@@ -180,7 +180,7 @@ CITIES: dict[str, CityConfig] = {
     ),
     "zakopane": CityConfig(
         id="zakopane",
-        name="Zakopane (map and walking only)",
+        name="Zakopane",  # with timetables only where built from the transcription: list_cities' features say which
         osm_region="malopolskie",
         bbox=(49.18, 19.80, 49.34, 20.14),  # the town, Kościelisko, Kuźnice and the road to Palenica Białczańska
         feeds=(Feed(
@@ -196,8 +196,9 @@ CITIES: dict[str, CityConfig] = {
                "assumption, so check the operator before travelling.",
                "Of 73 stops, 52 are placed at OpenStreetMap stops, 5 at the landmark they are named after "
                "(approximate) and 16 on the named street between the neighbouring stops (estimated).",
-               "County lines and the private minibuses (e.g. to Morskie Oko) are not included. Trains and "
-               "FlixBus coaches are in the national layer \"poland\" (plan_trip with to_city)."),
+               "This project's transcription covers the town's lines 10–18, not the county lines or the private "
+               "minibuses (e.g. to Morskie Oko). Trains and FlixBus coaches are in the national layer \"poland\" "
+               "(plan_trip with to_city)."),
         intercity_notes=("The private coaches and minibuses between Kraków and Zakopane (e.g. Szwagropol, Majer) "
                          "run often but publish no open timetables, so they are not included.",),
     ),
