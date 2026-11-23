@@ -105,8 +105,6 @@ server's protection: code mode changes how a model uses the tools, not who can o
 From a source-only security review (no confirmed vulnerabilities). Contributions welcome:
 
 - No checksum or signature on downloaded city files, and no cap on the unpacked size.
-- GitHub Actions are pinned by tag, not by commit SHA, except `PyO3/maturin-action` and the artifact actions of
-  `city-data.yml`.
 - `download` does not validate city ids and accepts non-HTTPS base URLs (operator-controlled input).
 - The OTLP endpoint is logged verbatim (strip credentials and query strings).
 - A race between `Timetable.day()`'s cache and the memory accounting (possible stale size; the budget is a soft
