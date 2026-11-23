@@ -92,17 +92,17 @@ def test_a_stop_index_far_out_is_refused_before_the_stop_list_is_allocated(city_
 
 def test_stop_indexes_with_gaps_still_load(city_dir, tmp_path):
     """The national layer numbers its stops with gaps (largest index 1.12x the count): a few gaps are fine."""
-    n = sqlite3.connect(city_dir / "testowo.sqlite").execute("SELECT COUNT(*) FROM stops").fetchone()[0]
-    c = tampered(city_dir, tmp_path, ("UPDATE stops SET stop_idx = ? WHERE stop_idx = 1", (2 * n,)),
-                 ("UPDATE transfers SET from_stop = ? WHERE from_stop = 1", (2 * n,)),
-                 ("UPDATE transfers SET to_stop = ? WHERE to_stop = 1", (2 * n,)))
-    db = sqlite3.connect(tmp_path / "testowo.sqlite")
+    db = sqlite3.connect(city_dir / "testowo.sqlite")
+    n = db.execute("SELECT COUNT(*) FROM stops").fetchone()[0]
+    blobs = []
     for idx, blob in db.execute("SELECT pattern_idx, stops FROM patterns").fetchall():
         s = np.frombuffer(blob, "<i4").copy()
         s[s == 1] = 2 * n
-        db.execute("UPDATE patterns SET stops = ? WHERE pattern_idx = ?", (s.astype("<i4").tobytes(), idx))
-    db.commit()
+        blobs.append(("UPDATE patterns SET stops = ? WHERE pattern_idx = ?", (s.astype("<i4").tobytes(), idx)))
     db.close()
+    c = tampered(city_dir, tmp_path, ("UPDATE stops SET stop_idx = ? WHERE stop_idx = 1", (2 * n,)),
+                 ("UPDATE transfers SET from_stop = ? WHERE from_stop = 1", (2 * n,)),
+                 ("UPDATE transfers SET to_stop = ? WHERE to_stop = 1", (2 * n,)), *blobs)
     assert c.tt.n_stops == 2 * n + 1 and c.tt.stops[2 * n] is not None
 
 
