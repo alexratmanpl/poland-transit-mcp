@@ -1,8 +1,10 @@
-"""A city file is read as it is: no side file beside it changes what is read."""
+"""A city file is read as it is: no side file beside it changes what is read, and a damaged or tampered file is
+refused with a readable error before it can allocate memory by a value it holds."""
 import shutil
 import sqlite3
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from poland_transit_mcp.build.safeguard import read_feeds
@@ -67,3 +69,57 @@ def test_opening_and_loading_a_city_writes_nothing_beside_it(city_dir, tmp_path)
     assert con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
     con.close()
     assert listing(tmp_path) == ["testowo.sqlite"]
+
+
+def tampered(city_dir: Path, tmp_path: Path, *changes: tuple[str, tuple]) -> City:
+    shutil.copy(city_dir / "testowo.sqlite", tmp_path / "testowo.sqlite")
+    db = sqlite3.connect(tmp_path / "testowo.sqlite")
+    for sql, params in changes:
+        db.execute(sql, params)
+    db.commit()
+    db.close()
+    return City.open(tmp_path, "testowo")
+
+
+@pytest.mark.parametrize("idx", [10_000_000, 2**62, -5])
+def test_a_stop_index_far_out_is_refused_before_the_stop_list_is_allocated(city_dir, tmp_path, idx):
+    """One stop_idx of 150 million got the process killed for memory, 2**62 gave a MemoryError; a negative one
+    would be stored from the end of the list. Each is refused with the usual readable error instead."""
+    c = tampered(city_dir, tmp_path, ("UPDATE stops SET stop_idx = ? WHERE stop_idx = (SELECT MAX(stop_idx) FROM stops)", (idx,)))
+    with pytest.raises(ValueError, match="timetable is malformed \\(stop indexes run from .* stops\\); rebuild"):
+        c.tt
+
+
+def test_stop_indexes_with_gaps_still_load(city_dir, tmp_path):
+    """The national layer numbers its stops with gaps (largest index 1.12x the count): a few gaps are fine."""
+    n = sqlite3.connect(city_dir / "testowo.sqlite").execute("SELECT COUNT(*) FROM stops").fetchone()[0]
+    c = tampered(city_dir, tmp_path, ("UPDATE stops SET stop_idx = ? WHERE stop_idx = 1", (2 * n,)),
+                 ("UPDATE transfers SET from_stop = ? WHERE from_stop = 1", (2 * n,)),
+                 ("UPDATE transfers SET to_stop = ? WHERE to_stop = 1", (2 * n,)))
+    db = sqlite3.connect(tmp_path / "testowo.sqlite")
+    for idx, blob in db.execute("SELECT pattern_idx, stops FROM patterns").fetchall():
+        s = np.frombuffer(blob, "<i4").copy()
+        s[s == 1] = 2 * n
+        db.execute("UPDATE patterns SET stops = ? WHERE pattern_idx = ?", (s.astype("<i4").tobytes(), idx))
+    db.commit()
+    db.close()
+    assert c.tt.n_stops == 2 * n + 1 and c.tt.stops[2 * n] is not None
+
+
+@pytest.mark.parametrize("value", [-1, 10_000])
+def test_a_pattern_naming_a_missing_stop_is_refused(city_dir, tmp_path, value):
+    db = sqlite3.connect(city_dir / "testowo.sqlite")
+    idx, blob = db.execute("SELECT pattern_idx, stops FROM patterns LIMIT 1").fetchone()
+    db.close()
+    s = np.frombuffer(blob, "<i4").copy()
+    s[0] = value
+    c = tampered(city_dir, tmp_path, ("UPDATE patterns SET stops = ? WHERE pattern_idx = ?", (s.astype("<i4").tobytes(), idx)))
+    with pytest.raises(ValueError, match="timetable is malformed \\(1 stop patterns name stops the file does not have\\)"):
+        c.tt
+
+
+@pytest.mark.parametrize("column", ["from_stop", "to_stop"])
+def test_a_transfer_naming_a_missing_stop_is_refused(city_dir, tmp_path, column):
+    c = tampered(city_dir, tmp_path, (f"UPDATE transfers SET {column} = -3 WHERE {column} = (SELECT MIN({column}) FROM transfers)", ()))
+    with pytest.raises(ValueError, match="timetable is malformed \\(a foot transfer .* the file does not have\\)"):
+        c.tt

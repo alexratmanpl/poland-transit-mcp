@@ -13,7 +13,9 @@ trust boundary is **data files and upstream feeds**:
 - **City files are trusted input.** They are loaded into native code (SciPy, the optional Rust engine) and are
   not checked against a checksum or signature. Build them yourself, or take them only from a source you control.
   Walking graphs are validated before use: their structure, and their coordinates (within the city file's box
-  ± 0.5°, on the globe, a snapping grid of at most 4 million cells). A city file is never loaded from the caller's
+  ± 0.5°, on the globe, a snapping grid of at most 4 million cells). So are timetables' stop numbers (from 0 to
+  less than twice the number of stops plus 1000; stop patterns and foot transfers name only stops the file has),
+  as the stop list's length is the largest of them. A city file is never loaded from the caller's
   working directory. It is opened read-only and immutable: SQLite reads the file alone, never a `-wal` or
   `-journal` file beside it, and writes nothing next to it; a file in WAL mode is refused. So a city file must be
   replaced by renaming a new file over it (as the build and `download` do), never changed in place while a server
