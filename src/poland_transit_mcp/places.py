@@ -14,7 +14,7 @@ KINDS = ("attraction", "museum", "park", "station", "stop", "hotel", "landmark",
 _BOOST = {"station": 8, "attraction": 6, "museum": 6, "landmark": 5, "park": 4, "stop": 3, "street": 2, "hotel": 0}
 
 
-# A name without `near` is ranked nearer the city's centre first, among comparable matches: a point per km from the
+# A name without `near` is ranked nearer the city's centre first, among comparable matches: 1.5 points a km from the
 # centre, at most CENTRE_MAX (a whole match class, exact vs. starts-with, is 50 points; "Rynek" in Kraków is a square
 # in many towns of its area, and the bare name should not land 20 km out).
 CENTRE_PER_KM, CENTRE_MAX = 1.5, 30
