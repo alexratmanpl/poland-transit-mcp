@@ -2,7 +2,7 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.5.6 - 2026-11-23
 
 ### Security
 - **A file beside a city file no longer changes what is read.** A `<city>.sqlite-wal` file planted next to a city file overrode its content (a security audit renamed a city this way), also when the city file itself was not in WAL mode, and opening a file in WAL mode created a `-shm` file in the data directory. City files are now opened `immutable`: SQLite reads the file alone, never a `-wal` or `-journal` file beside it, and writes nothing next to it. A city file in WAL mode is refused with a readable error (its newest data may sit in the `-wal` file) and skipped at start-up like a damaged file; the build never writes one, as it writes a new file without a journal and renames it into place.
