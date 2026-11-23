@@ -51,7 +51,7 @@ from .stations import plan_stations as plan_stations_
 from .timeutil import fmt_date, fmt_hm, parse_date, parse_when
 from .transit import line_info as _line_info
 from .text import fold, quoted
-from .transit import MAX_PLATFORMS, resolve_stops, scheduled_departures, train_info
+from .transit import MAX_PLATFORMS, resolve_stops, scheduled_departures, stations_named, train_info
 from .transit import stops_near as _stops_near
 from .transit import walk_route as _walk_route
 
@@ -757,12 +757,7 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
         if c.national:  # stations only, by name
             if not query:
                 raise Refused(f'on "{c.id}", give a station name as query')
-            q = fold(query)
-            seen: dict[str, object] = {}
-            for s in c.tt.stops:
-                if s is not None and q in fold(s.name) and s.name not in seen:
-                    seen[s.name] = s
-            ranked = sorted(seen.values(), key=lambda s: (not fold(s.name).startswith(q), len(s.name), s.name))
+            ranked = stations_named(c, query)
             note = (more_places(len(ranked), limit, "a longer name") if len(ranked) > limit else
                     None if ranked else f'no station matching {quoted(query)}')
             return reply({"places": [{"kind": "station", "name": s.name, "at": pt(s.lat, s.lon)} for s in ranked[:limit]],
@@ -894,10 +889,11 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
                   layer: Annotated[str | None, Field(max_length=40, description=LAYER)] = None,
                   detail: Detail(PLAN_FULL + " (2 to 3 times larger)") = "summary") -> Annotated[CallToolResult, A.PlanTrip]:
         """Door-to-door trip by public transport on the scheduled timetable: walk, ride (with changes), walk. Up
-        to 3 options, each with its legs: times, line, direction, stops, operator. Leaves now, at `depart_at`, or
-        arrives by `arrive_by`. For a trip to another listed city set `to_city`: the plan adds trains or FlixBus
-        coaches between the cities (train, platform, track) and city transport at both ends. Each option has a `trip`
-        value that render_map draws; it stays valid while the timetable data is the same."""
+        to 3 options, earliest arrival first (arrive_by: latest departure first), each with its legs: times, line,
+        direction, stops, operator. Leaves now, at `depart_at`, or arrives by `arrive_by`. For a trip to another
+        listed city set `to_city`: the plan adds trains or FlixBus coaches between the cities (train, platform,
+        track) and city transport at both ends. Each option has a `trip` value for render_map, valid while the
+        timetable data is the same."""
         if depart_at and arrive_by:
             raise Refused("give depart_at or arrive_by, not both")
         c = city_of(city)
@@ -946,9 +942,9 @@ def create_server(cities: "dict[str, City] | CityPool", memory_budget_mb: float 
         traveller who starts or ends at a station, and for stations outside the listed cities (also abroad). `from`
         and `to` are lists of stops, each with the minutes needed there before boarding or after arriving, e.g.
         [{"stop": "Kraków Główny", "minutes": 15}]; each option's depart and arrive include those minutes. Up to 3
-        options: the best connections, not every train (for all trains between two stations use departures with
-        `to`). FlixBus stops have their own names (e.g. "Wroclaw, Bus Station"): find them with find_places on the
-        layer."""
+        options, earliest arrival first (arrive_by: latest departure first): the best connections, not every train
+        (for all trains between two stations use departures with `to`). FlixBus stops have their own names (e.g.
+        "Wroclaw, Bus Station"): find them with find_places on the layer."""
         if depart_at and arrive_by:
             raise Refused("give depart_at or arrive_by, not both")
         nat = national_layer(layer, "trips between stations")

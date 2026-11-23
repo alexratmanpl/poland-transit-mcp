@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .city import City
 from .geo import pt, simplify
-from .places import resolve_point
+from .places import notes_of, resolve_point
 from .raptor import RJourney, raptor
 from .timetable import DayTrip, headway_fields, route_color
 from .timeutil import fmt_date, fmt_wall, parse_when
@@ -97,8 +97,9 @@ def ranked(lst: list[Itin], backward: bool) -> list[Itin]:
 
 def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str | None = None,
               max_transfers: int = 2) -> dict:
-    A, a_label, _ = resolve_point(city, frm)
-    B, b_label, _ = resolve_point(city, to)
+    A, a_label, ra = resolve_point(city, frm)
+    B, b_label, rb = resolve_point(city, to)
+    matched = notes_of(ra, rb)  # a name that may have matched another place than the one meant
     backward = bool(arrive_by)
     when = parse_when(arrive_by or depart_at)
     max_transfers = max(0, min(max_transfers if max_transfers is not None else 2, 4))
@@ -123,7 +124,7 @@ def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str 
                                "path": [pt(*c) for c in simplify(walk.coords, 8)]}]}
     note = city.transit_note(date)
     if not city.has_transit or note:
-        return {**head, "itineraries": [walk_itin] if walk_itin else [], "note": note}
+        return {**head, "itineraries": [walk_itin] if walk_itin else [], "note": "; ".join(filter(None, [*matched, note])) or None}
 
     tt = city.tt
     acc = walk_to_stops(city, A, ACCESS_SECS)
@@ -203,8 +204,9 @@ def plan_trip(city: City, frm, to, depart_at: str | None = None, arrive_by: str 
                 walk_note = (f"walking ({round(walk.secs / 60)} min) is listed first: the fastest transit option "
                              f"saves only {round((walk.secs - best_transit) / 60)} min")
     return {**head, "itineraries": itineraries,
-            "note": walk_note if itineraries else
-            f"no connection with ≤{max_transfers} transfers within {MAX_WAIT_SECS // 3600} h of the requested time"}
+            "note": "; ".join(filter(None, [*matched, walk_note if itineraries else
+                    f"no connection with ≤{max_transfers} transfers within {MAX_WAIT_SECS // 3600} h of the requested time"]))
+            or None}
 
 
 def _straight(a, b) -> float:

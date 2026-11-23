@@ -119,3 +119,34 @@ def test_a_prefix_of_many_names_is_refused_with_the_first_eight(ref):
     city = synthetic_city([f"Stacja {i:03d}" for i in range(50)])
     with pytest.raises(Refused, match=r"matches several stops: Stacja 000, Stacja 001, .*Stacja 007; pass"):
         transit.resolve_stops(city, ref)
+
+
+def scan_stations_named(city, query: str):
+    """find_places on a national layer as it was before the index: a fold of every stop's name per call."""
+    q = fold(query)
+    seen = {}
+    for s in city.tt.stops:
+        if s is not None and q in fold(s.name) and s.name not in seen:
+            seen[s.name] = s
+    return sorted(seen.values(), key=lambda s: (not fold(s.name).startswith(q), len(s.name), s.name))
+
+
+def test_stations_by_name_are_the_ones_the_scan_found(city, tmp_path):
+    from fixture import build_national_fixture
+
+    _, _, nat = build_national_fixture(tmp_path / "nat")
+    for c in (synthetic_city(NAMES), synthetic_city(NAMES, gaps=False), nat):
+        refs = set(REFS) | {s.name for s in c.tt.stops if s}
+        refs |= {r[:k] for r in list(refs) for k in (1, 3, 5)} | {r.upper() for r in refs}
+        for ref in sorted(refs):
+            assert [s.idx for s in transit.stations_named(c, ref)] == [s.idx for s in scan_stations_named(c, ref)], ref
+
+
+def test_stations_by_name_do_not_fold_every_stop(monkeypatch):
+    city = synthetic_city([f"Stacja {i:05d}" for i in range(3000)], gaps=False)
+    calls = []
+    real = text.fold
+    monkeypatch.setattr(transit, "fold", lambda s: calls.append(s) or real(s))
+    monkeypatch.setattr(timetable, "fold", lambda s: calls.append(s) or real(s))
+    assert [s.name for s in transit.stations_named(city, "stacja 0012")][:2] == ["Stacja 00120", "Stacja 00121"]
+    assert len(calls) == 1

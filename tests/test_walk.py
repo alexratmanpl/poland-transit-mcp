@@ -98,3 +98,32 @@ def test_a_city_file_with_a_node_far_away_fails_with_a_readable_error(city_dir, 
     c = City.open(tmp_path, "testowo")
     with pytest.raises(ValueError, match="1 of 384 nodes lie outside the city's area"):
         c.graph
+
+
+def test_indoor_corridors_are_walked_and_private_ones_are_not(tmp_path):
+    """A station's halls (highway=corridor) join its platform side to the city side: without them the walk went round
+    by the next street (Katowice station to the Rondo, 1,712 m instead of 1,265 m)."""
+    import json
+    import sqlite3
+
+    from poland_transit_mcp.build.build_city import Builder, walkable
+    from poland_transit_mcp.config import CITIES
+    from poland_transit_mcp.schema import SCHEMA
+
+    assert walkable({"highway": "corridor", "indoor": "yes"})
+    assert not walkable({"highway": "corridor", "indoor": "yes", "access": "private"})
+    south, north = (19.0, 50.0), (19.0, 50.003)  # 333 m apart, the station between them
+    ways = [({"highway": "footway"}, [south, (19.0, 50.001)]),
+            ({"highway": "corridor", "indoor": "yes", "level": "0"}, [(19.0, 50.001), (19.0, 50.002)]),
+            ({"highway": "footway"}, [(19.0, 50.002), north]),
+            ({"highway": "residential"}, [south, (19.01, 50.0), (19.01, 50.003), north])]  # the way round, ~1.75 km
+    path = tmp_path / "hw.geojsonseq"
+    path.write_text("".join("\x1e" + json.dumps({"type": "Feature", "properties": t,
+                                                  "geometry": {"type": "LineString", "coordinates": [list(c) for c in cs]}}) + "\n"
+                            for t, cs in ways))
+    db = sqlite3.connect(":memory:")
+    db.executescript(SCHEMA)
+    g = WalkGraph(Builder(CITIES["katowice"], db).highways(path))
+    a, b = g.snap(south[1], south[0], 10), g.snap(north[1], north[0], 10)
+    cost, _ = g.route(a.node, b.node)
+    assert cost == pytest.approx(333.6, abs=1)

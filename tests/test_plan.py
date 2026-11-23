@@ -51,3 +51,17 @@ def test_bad_inputs(city):
         plan_trip(city, "Nibylandia", at(2, 1))
     with pytest.raises(ValueError, match="outside testowo"):
         plan_trip(city, [52.2, 21.0], at(2, 1))
+
+
+def test_options_come_earliest_arrival_first_and_latest_departure_first_with_arrive_by():
+    """The order the tool descriptions state (plan_trip, plan_stations): ranked() for both searches."""
+    from poland_transit_mcp.plan import Itin, ranked
+
+    def it(start, end, transfers):
+        return Itin(0, 0, 0, 0, [], f"{start}-{end}", start, end, transfers)
+
+    # 14:34→17:06 (2 changes), 14:13→15:41 (1), 13:55→15:56 (0): none beats another on start, end and changes
+    opts = [it(13 * 60 + 55, 15 * 60 + 56, 0), it(14 * 60 + 13, 15 * 60 + 41, 1), it(14 * 60 + 34, 17 * 60 + 6, 2)]
+    assert [o.start for o in ranked(opts, backward=True)] == [14 * 60 + 34, 14 * 60 + 13, 13 * 60 + 55]
+    assert [o.end for o in ranked(opts, backward=False)] == [15 * 60 + 41, 15 * 60 + 56, 17 * 60 + 6]
+
