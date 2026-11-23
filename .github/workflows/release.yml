@@ -36,10 +36,14 @@ jobs:
           name: wheels-linux-${{ matrix.target }}
           path: engine/dist
   macos:
-    runs-on: macos-15  # Apple Silicon; the x86_64 wheel is cross-built (macos-14 images are retired)
+    # each wheel on its own architecture: the x86_64 wheel was cross-built on Apple Silicon, and that queue went
+    # without a runner for hours (GitHub: capacity constraints on macOS arm64); macos-15-intel is supported until 2027-08
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        target: [x86_64, aarch64]
+        include:
+          - { target: x86_64, runner: macos-15-intel }
+          - { target: aarch64, runner: macos-15 }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0

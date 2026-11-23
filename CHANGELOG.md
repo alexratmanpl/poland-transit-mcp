@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Ver
 ### Changed
 - **Zakopane's name and notes describe this project's transcription, not a file.** The name was "Zakopane (map and walking only)", and a note said the county lines and the private minibuses (e.g. to Morskie Oko) "are not included"; a file built with the transcription has timetables, and a builder may add trips. The name is now "Zakopane" (`list_cities`' features say what a file holds), and the note says the transcription covers the town's lines 10–18, not the county lines or the minibuses. Both are stored in a city file when it is built, so they show after the next build.
 
+### Build
+- **The macOS x86_64 wheel is built on an Intel runner.** It was cross-built on Apple Silicon (`macos-15`), and on 2026-11-23 that job went three times without a runner (GitHub: capacity constraints on macOS arm64). It now runs on `macos-15-intel`, which GitHub supports until August 2027; the arm64 wheel stays on `macos-15`.
+
 ## 0.5.6 - 2026-11-23
 
 ### Security
