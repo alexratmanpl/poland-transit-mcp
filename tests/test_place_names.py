@@ -38,7 +38,7 @@ def named(city_dir, tmp_path_factory) -> City:
 
     # "Wiadukt": a street fragment of that bare name 20 km out, and the stop "Testowo Wiadukt" in the centre (like "Katowice Rondo")
     place("street", "Wiadukt", [c_lat - 20 * KM_SOUTH, c_lon])
-    place("stop", "Testowo Wiadukt", at(3, 1), {"stop_id": "T:R"})
+    place("stop", "Testowo Wiadukt", at(3, 1), {"stop_id": "T:W"})
     # "Ratusz": a landmark of that name in the centre, and a better-known one (Wikipedia) 15 km out
     place("landmark", "Ratusz", at(4, 2))
     place("landmark", "Ratusz", [c_lat - 15 * KM_SOUTH, c_lon], {"wikipedia": "pl:Ratusz"})
