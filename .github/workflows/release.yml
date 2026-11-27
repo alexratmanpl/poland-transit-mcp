@@ -46,15 +46,19 @@ jobs:
           read_version() { python3 -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(d[sys.argv[2]]["version"])' "$@"; }
           version=$(read_version engine/pyproject.toml project)
           cargo=$(read_version engine/Cargo.toml package)
-          [[ "$version" =~ ^[0-9A-Za-z.+-]+$ ]] || { echo "::error::unexpected engine version '$version'"; exit 1; }
+          ok='^[0-9A-Za-z.+-]+$'  # checked before either value is printed or used
+          [[ "$version" =~ $ok && "$cargo" =~ $ok ]] || { echo "::error::unexpected engine version in engine/pyproject.toml or engine/Cargo.toml"; exit 1; }
           [ "$version" = "$cargo" ] || { echo "::error::engine/pyproject.toml has $version, engine/Cargo.toml $cargo"; exit 1; }
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --retry 3 \
+            "https://pypi.org/pypi/poland-transit-mcp-engine/$version/json") || true
           if [ "$FORCE" = "true" ]; then
             build=true; why="the run's engine input is ticked"
           elif [ "$EVENT" = "pull_request" ] && ! git diff --quiet HEAD^1 HEAD -- engine/ .github/workflows/release.yml; then
             build=true; why="this pull request changes engine/ or release.yml"
+            if [ "$status" = "200" ] && ! git diff --quiet HEAD^1 HEAD -- engine/; then
+              echo "::warning::engine/ changed but PyPI already has engine $version: a release skips the engine build, so bump the engine version for the change to ship"
+            fi
           else
-            status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --retry 3 \
-              "https://pypi.org/pypi/poland-transit-mcp-engine/$version/json") || true
             case "$status" in
               404) build=true; why="PyPI does not have it" ;;
               200) build=false; why="PyPI already has it" ;;
@@ -160,6 +164,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
         with:
           python-version: "3.11"
@@ -174,13 +180,14 @@ jobs:
       - if: needs.linux.result == 'skipped'
         env:
           VERSION: ${{ needs.engine.outputs.version }}
-        run: uv pip install --only-binary poland-transit-mcp-engine "poland-transit-mcp-engine==$VERSION"
+        run: uv pip install --no-deps --only-binary poland-transit-mcp-engine "poland-transit-mcp-engine==$VERSION"
       - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
       - run: uv run pytest -q
   publish:
-    # always(): run when the engine's jobs were skipped; !failure() and !cancelled(): never when a needed job failed
+    # a status function in the condition lets it run when the engine's jobs were skipped; !failure() and
+    # !cancelled(): never when a needed job failed or the run was cancelled
     if: >-
-      always() && !failure() && !cancelled()
+      !failure() && !cancelled()
       && needs.server.result == 'success' && needs.check.result == 'success'
       && github.event_name == 'workflow_dispatch' && inputs.publish && startsWith(github.ref, 'refs/tags/v')
     needs: [engine, server, linux, macos, windows, sdist, check]
