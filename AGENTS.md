@@ -66,8 +66,8 @@ and after changing a dependency run `uv lock` and commit the new lock. The packa
 `--extra small-png` adds Pillow: map PNGs saved with a 256-colour palette, about 70% fewer bytes (a client sends a
 picture again with every later message), the same image tokens; without it a PNG is as resvg draws it.
 `pyproject.toml` maps the engine to `engine/` (`[tool.uv.sources]`): uv installs from a clone, a local path or git
-build it from there (needs Rust). PyPI installs ignore that mapping and **the engine is not on PyPI**, so
-`uvx --from "poland-transit-mcp[fast]"` (from PyPI) cannot resolve it.
+build it from there (needs Rust). PyPI installs ignore that mapping and take the engine's prebuilt wheel from PyPI
+(`poland-transit-mcp-engine`, no Rust needed): `uvx --from "poland-transit-mcp[fast]" python -c "import poland_transit_engine"` works.
 
 ## 4. City data (the step everyone trips on)
 
@@ -234,8 +234,8 @@ uv run python scripts/measure.py --cities gdansk --trips 50    # Linux only: it 
   [docs/INTERCITY.md](docs/INTERCITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
 - **Git:** never commit `data/`, `.venv/`, `.mcp.json`, `*.sqlite`, `*.pbf`, `*.zip` (all gitignored). Open PRs
   against the default branch.
-- **CI:** `test.yml` (Python 3.11/3.13, with and without the engine), `release.yml` (both packages, engine wheels for every platform; PyPI publish
-  is manual), `city-data.yml` (data build; manual until the `data-latest` release exists, then weekly).
+- **CI:** `test.yml` (Python 3.11/3.13, with and without the engine), `release.yml` (both packages; engine wheels for every platform only when
+  PyPI does not have that engine version yet, or when the "engine" input is ticked; PyPI publish is manual), `city-data.yml` (data build; manual until the `data-latest` release exists, then weekly).
 - **Security posture:** read-only tools; data files and upstream feeds are the one trust boundary
   (so: do not point `--from` / `POLAND_TRANSIT_DATA_URL` at untrusted hosts, and do not load city files you
   did not build). Do not widen `--http` beyond loopback.
@@ -258,7 +258,7 @@ files there would be served silently); builds (network, about 1 GB in `data/` fo
 | `cargo`/`rustc` not found during `uv sync --extra fast` | no Rust toolchain | `brew install rust`, or drop `--extra fast` |
 | `osmium` not found during `build` | osmium-tool missing | `brew install osmium-tool` |
 | `download failed: … CERTIFICATE_VERIFY_FAILED` during `build --download` | the server's root is missing from the trust store in use | downloads trust the system's roots plus Mozilla's (`certifi`); for another store, set `SSL_CERT_FILE` before starting; or download the zip by hand into `data/raw/<city>/<key>.zip` and build without `--download` |
-| `uvx --from "poland-transit-mcp[fast]"` cannot resolve | engine and package are not on PyPI | use a clone (steps 2–3), or a git URL or local path with a Rust toolchain |
+| `uvx --from "poland-transit-mcp[fast]"` builds from source or cannot resolve | no prebuilt engine wheel for this platform or Python on PyPI | use a clone (steps 2–3), or a git URL or local path with a Rust toolchain |
 | First call to a city takes seconds; switching cities is slow | the city loads on first use; budget too small | raise `--memory-budget` (600 / 700); the start-up log says what is needed |
 | `plan_trip` with `to_city` says the national layer is missing | `poland` not in `--cities` / not built | `build poland --download`, add `poland` |
 | ImportError for `mcp.server.mcpserver` | MCP SDK older than 2.3 | `uv sync` (the pin is `mcp>=2.3,<2.4`) |

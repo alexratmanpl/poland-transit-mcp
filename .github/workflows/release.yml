@@ -1,6 +1,7 @@
 # Builds both packages and, when a maintainer asks, publishes them to PyPI:
 #   poland-transit-mcp         the server (pure Python: one wheel and the source)
 #   poland-transit-mcp-engine  the optional Rust engine (abi3 wheels for Linux, macOS, Windows, and the source)
+# The engine is built only when PyPI does not have its version yet (job `engine`), or when a run asks for it.
 # Nothing is published unless a maintainer starts this workflow by hand on a release tag (vX.Y.Z) with
 # "publish" ticked, and approves the `pypi` environment. The tag must match the version in pyproject.toml.
 # PyPI Trusted Publishing: no tokens or secrets are stored in this repository (docs/PUBLISHING.md).
@@ -12,12 +13,63 @@ on:
         description: "Upload both packages to PyPI (run this on a release tag)"
         type: boolean
         default: false
+      engine:
+        description: "Build the engine even if PyPI already has its version"
+        type: boolean
+        default: false
   pull_request:
     paths: ["engine/**", "src/**", "pyproject.toml", "uv.lock", ".github/workflows/release.yml"]
 permissions:
   contents: read
 jobs:
+  # Decides whether the engine's wheels are built: a server-only release then waits on no macOS runner.
+  # Built when PyPI answers 404 for the engine's version (engine/pyproject.toml, the version maturin publishes), when
+  # PyPI cannot be reached or answers anything but 200 or 404, when the run's "engine" input is ticked, or on a pull
+  # request that changes engine/ or this workflow. Only the HTTP status is read, never the body.
+  engine:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 2  # a pull request's merge commit and its base, to see whether engine/ changed
+          persist-credentials: false
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          FORCE: ${{ inputs.engine }}
+        run: |
+          read_version() { python3 -c 'import sys, tomllib; d = tomllib.load(open(sys.argv[1], "rb")); print(d[sys.argv[2]]["version"])' "$@"; }
+          version=$(read_version engine/pyproject.toml project)
+          cargo=$(read_version engine/Cargo.toml package)
+          ok='^[0-9A-Za-z.+-]+$'  # checked before either value is printed or used
+          [[ "$version" =~ $ok && "$cargo" =~ $ok ]] || { echo "::error::unexpected engine version in engine/pyproject.toml or engine/Cargo.toml"; exit 1; }
+          [ "$version" = "$cargo" ] || { echo "::error::engine/pyproject.toml has $version, engine/Cargo.toml $cargo"; exit 1; }
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --retry 3 \
+            "https://pypi.org/pypi/poland-transit-mcp-engine/$version/json") || true
+          if [ "$FORCE" = "true" ]; then
+            build=true; why="the run's engine input is ticked"
+          elif [ "$EVENT" = "pull_request" ] && ! git diff --quiet HEAD^1 HEAD -- engine/ .github/workflows/release.yml; then
+            build=true; why="this pull request changes engine/ or release.yml"
+            if [ "$status" = "200" ] && ! git diff --quiet HEAD^1 HEAD -- engine/; then
+              echo "::warning::engine/ changed but PyPI already has engine $version: a release skips the engine build, so bump the engine version for the change to ship"
+            fi
+          else
+            case "$status" in
+              404) build=true; why="PyPI does not have it" ;;
+              200) build=false; why="PyPI already has it" ;;
+              *) build=true; why="PyPI answered '$status', so building to be safe" ;;
+            esac
+          fi
+          echo "::notice::engine $version: build=$build ($why)"
+          { echo "build=$build"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
   linux:
+    needs: engine
+    if: needs.engine.outputs.build == 'true'
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -36,6 +88,8 @@ jobs:
           name: wheels-linux-${{ matrix.target }}
           path: engine/dist
   macos:
+    needs: engine
+    if: needs.engine.outputs.build == 'true'
     # each wheel on its own architecture: the x86_64 wheel was cross-built on Apple Silicon, and that queue went
     # without a runner for hours (GitHub: capacity constraints on macOS arm64); macos-15-intel is supported until 2027-08
     runs-on: ${{ matrix.runner }}
@@ -57,6 +111,8 @@ jobs:
           name: wheels-macos-${{ matrix.target }}
           path: engine/dist
   windows:
+    needs: engine
+    if: needs.engine.outputs.build == 'true'
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
@@ -71,6 +127,8 @@ jobs:
           name: wheels-windows-x64
           path: engine/dist
   sdist:
+    needs: engine
+    if: needs.engine.outputs.build == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
@@ -96,26 +154,43 @@ jobs:
         with:
           name: server
           path: dist/*
-  # the Linux wheel, installed next to the server, must give the same answers (tests/test_engine.py)
+  # the Linux wheel, installed next to the server, must give the same answers (tests/test_engine.py); when the engine
+  # was not built, the wheel PyPI has for its version is tested instead
   check:
-    needs: linux
+    needs: [engine, linux]
+    if: >-
+      !cancelled() && needs.engine.result == 'success'
+      && (needs.linux.result == 'success' || needs.linux.result == 'skipped')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6.8.0
         with:
           python-version: "3.11"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        if: needs.linux.result == 'success'
         with:
           name: wheels-linux-x86_64
           path: wheels
       - run: uv sync --locked --extra dev
-      - run: uv pip install wheels/*.whl
+      - if: needs.linux.result == 'success'
+        run: uv pip install wheels/*.whl
+      - if: needs.linux.result == 'skipped'
+        env:
+          VERSION: ${{ needs.engine.outputs.version }}
+        run: uv pip install --no-deps --only-binary poland-transit-mcp-engine "poland-transit-mcp-engine==$VERSION"
       - run: uv run python -c "import poland_transit_mcp.engine as e; assert e.available(), e.NAME; print(e.NAME)"
       - run: uv run pytest -q
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && startsWith(github.ref, 'refs/tags/v')
-    needs: [server, linux, macos, windows, sdist, check]
+    # a status function in the condition lets it run when the engine's jobs were skipped; !failure() and
+    # !cancelled(): never when a needed job failed or the run was cancelled
+    if: >-
+      !failure() && !cancelled()
+      && needs.server.result == 'success' && needs.check.result == 'success'
+      && github.event_name == 'workflow_dispatch' && inputs.publish && startsWith(github.ref, 'refs/tags/v')
+    needs: [engine, server, linux, macos, windows, sdist, check]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:

@@ -44,14 +44,17 @@ it uses at start-up (`search engine: rust <version>` or `python`) and in `list_c
 Both packages come from one workflow, run on a release tag (`vX.Y.Z`, the version in `pyproject.toml`).
 
 1. **Dry run.** *Actions → release → Run workflow*, pick the tag, "publish" **unticked**.
-   - It builds the server (wheel and source) and the engine: wheels for Linux (x86-64, ARM), macOS (Intel, Apple
-     Silicon), Windows (x64), plus its source. The engine's wheels are abi3: one per platform for every CPython
-     from 3.11 on.
-   - It installs the Linux engine wheel next to the server and runs the test suite, including the check that Rust
-     and Python give the same plans.
+   - It builds the server (wheel and source). It builds the engine only when PyPI does not have the version in
+     `engine/pyproject.toml` yet, when PyPI cannot be reached, or when "engine" is ticked: wheels for Linux
+     (x86-64, ARM), macOS (Intel, Apple Silicon), Windows (x64), plus its source. The engine's wheels are abi3: one
+     per platform for every CPython from 3.11 on. A server-only release (engine version unchanged) skips these jobs
+     and waits on no macOS runner.
+   - It installs the Linux engine wheel next to the server (the one just built, or else the one PyPI has for that
+     version) and runs the test suite, including the check that Rust and Python give the same plans.
 2. **Publish.** If everything is green, run it again on the tag with "publish" **ticked**, and approve the `pypi`
    environment. It refuses to publish from anything but a tag whose name matches the server's version. Files PyPI
-   already has for that version are skipped, so a release first uploaded by hand gets the engine's wheels added.
+   already has for that version are skipped. If the engine's version is on PyPI without its wheels (its source
+   uploaded by hand), tick "engine" too: otherwise the workflow sees the version on PyPI and does not build them.
 3. **Check.** On any machine with city files you built: `uvx --from "poland-transit-mcp[fast]" poland-transit-mcp
    --data-dir DIR --no-download`. The start-up line should say `search engine: rust`. (Without city files the
    server stops before that line.)
@@ -59,7 +62,7 @@ Both packages come from one workflow, run on a release tag (`vX.Y.Z`, the versio
 **By hand, if the workflow cannot run:** from a clean clone of the tag, `uv build --sdist --wheel` for the server
 and `uvx maturin sdist` in `engine/` for the engine's source, then `uv publish` with a PyPI token, naming only the
 `*.whl` and `*.tar.gz` files. Installing the engine from that source upload needs a Rust toolchain until the
-workflow adds its wheels.
+workflow adds its wheels (run it with "engine" ticked, as PyPI already has that version).
 
 ## What was checked before this was written
 
@@ -69,4 +72,4 @@ See [CHECKS.md](CHECKS.md), "Rust engine". In short:
 - `[fast]` resolves when the engine is offered from a package index (simulated with `--find-links`).
 - Answers are identical to the Python search on 400 real trip plans and on every acceptance query.
 - Uninstalling the engine falls back to the Python search.
-- **Not checked:** the macOS and Windows wheels. They can only be built on those systems; the release workflow's dry run does that.
+- **Not checked:** the macOS and Windows wheels. They can only be built on those systems; the release workflow's dry run does that when it builds the engine (a new engine version, or "engine" ticked).
