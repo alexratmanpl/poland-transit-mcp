@@ -2,6 +2,11 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Build
+- **The engine's wheels are built only when its version is new.** `release.yml` built the engine for every platform on every run, so a server-only release waited on the scarce macOS runners for wheels PyPI already had. A first job, `engine`, reads the engine's version from `engine/pyproject.toml` (the version maturin publishes; it fails when `engine/Cargo.toml` has another) and asks PyPI for it, reading only the HTTP status: on 404 the engine is built, on 200 its jobs are skipped, and on anything else (PyPI unreachable, an error) it is built, to be safe. A pull request that changes `engine/` or `release.yml` still builds it, and the new "engine" input of a manual run forces it. When the engine was not built, `check` runs the test suite with the Linux wheel PyPI has for that version, and `publish` runs with the engine's jobs skipped, never after a failed job.
+
 ## 0.5.7 - 2026-11-23
 
 ### Fixed
